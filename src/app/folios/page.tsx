@@ -1,25 +1,28 @@
 'use client'
 import { useState, useMemo } from 'react'
 import { useFolios } from '@/hooks/useFolios'
+import { useAuth } from '@/hooks/useAuth'
 import { Countdown } from '@/components/ui/Countdown'
 import { createClient } from '@/lib/supabase/client'
 import { parseCorreo, calcularFechaVencimiento } from '@/lib/parser'
 import { toast } from 'sonner'
-import { Search, Mail, X } from 'lucide-react'
+import { Search, Mail, X, Trash2 } from 'lucide-react'
 import type { Folio } from '@/types'
 import { format } from 'date-fns'
 
 export default function FoliosPage() {
   const { folios, loading, refetch } = useFolios()
+  const { user } = useAuth()
+  const isAdmin = user?.rol === 'admin'
   const supabase = createClient()
 
-  const [search, setSearch]       = useState('')
-  const [fCiudad, setFCiudad]     = useState('Todas')
+  const [search, setSearch]         = useState('')
+  const [fCiudad, setFCiudad]       = useState('Todas')
   const [fPrioridad, setFPrioridad] = useState('Todas')
-  const [fEstatus, setFEstatus]   = useState('Todos')
+  const [fEstatus, setFEstatus]     = useState('Todos')
   const [showImport, setShowImport] = useState(false)
   const [showDetail, setShowDetail] = useState<Folio | null>(null)
-  const [emailText, setEmailText] = useState('')
+  const [emailText, setEmailText]   = useState('')
   const [importLoading, setImportLoading] = useState(false)
 
   const filtered = useMemo(() => {
@@ -47,11 +50,9 @@ export default function FoliosPage() {
     setImportLoading(true)
     try {
       const parsed = parseCorreo(emailText)
-
       await supabase.from('correos_importados').insert({
         tipo: parsed.tipo, contenido: emailText, folio_detectado: parsed.ticket, procesado: false,
       })
-
       if (parsed.tipo === 'cierre') {
         const { data: existing } = await supabase
           .from('folios').select('id,fecha_vencimiento,estatus').eq('numero_folio', parsed.ticket!).single()
@@ -100,10 +101,7 @@ export default function FoliosPage() {
       } else {
         toast.error('No se pudo detectar el tipo de correo')
       }
-
-      setEmailText('')
-      setShowImport(false)
-      refetch()
+      setEmailText(''); setShowImport(false); refetch()
     } catch (e) {
       toast.error('Error al procesar el correo')
     }
@@ -114,14 +112,22 @@ export default function FoliosPage() {
     const now = new Date()
     const vencimiento = new Date(folio.fecha_vencimiento)
     const cerradoATiempo = now <= vencimiento
-    const tiempoVencidoMins = cerradoATiempo ? 0 : Math.floor((now.getTime() - vencimiento.getTime()) / 60000)
     await supabase.from('folios').update({
       estatus: 'Cerrado', fecha_cierre: now.toISOString(),
-      cerrado_a_tiempo: cerradoATiempo, tiempo_vencido_mins: tiempoVencidoMins,
+      cerrado_a_tiempo: cerradoATiempo,
+      tiempo_vencido_mins: cerradoATiempo ? 0 : Math.floor((now.getTime() - vencimiento.getTime()) / 60000),
       updated_at: now.toISOString(),
     }).eq('id', folio.id)
     toast.success(`Folio #${folio.numero_folio} cerrado`)
     setShowDetail(null)
+  }
+
+  async function deleteFolio(folio: Folio) {
+    if (!confirm(`¿Eliminar folio #${folio.numero_folio}?\n\nEsta acción no se puede deshacer.`)) return
+    await supabase.from('folios').delete().eq('id', folio.id)
+    toast.success(`Folio #${folio.numero_folio} eliminado`)
+    setShowDetail(null)
+    refetch()
   }
 
   const fbtn = (active: boolean, onClick: () => void, label: string) => (
@@ -176,7 +182,7 @@ export default function FoliosPage() {
             const borderLeft = isVencido ? 'border-l-red-500' : f.prioridad === 'ALTA' ? 'border-l-orange-400' : f.prioridad === 'MEDIA' ? 'border-l-yellow-400' : 'border-l-blue-400'
             return (
               <div key={f.id} onClick={() => setShowDetail(f)}
-                className={`card card-hover p-4 border-l-2 ${borderLeft} animate-slide-up`}>
+                className={`card card-hover p-4 border-l-2 ${borderLeft}`}>
                 <div className="flex items-start gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -192,14 +198,10 @@ export default function FoliosPage() {
                   <div className="text-right flex-shrink-0">
                     <Countdown fechaVencimiento={f.fecha_vencimiento} estatus={isVencido ? 'Vencido' : f.estatus} prioridad={f.prioridad} showBar />
                     {f.fecha_importacion && (
-                      <div className="text-xs text-dark-500 mt-1">
-                        Llegó: {format(new Date(f.fecha_importacion), 'dd/MM HH:mm')}
-                      </div>
+                      <div className="text-xs text-dark-500 mt-1">Llegó: {format(new Date(f.fecha_importacion), 'dd/MM HH:mm')}</div>
                     )}
                     {f.fecha_cierre && (
-                      <div className="text-xs text-dark-500 mt-1">
-                        {f.cerrado_a_tiempo ? '✅' : '⚠'} {format(new Date(f.fecha_cierre), 'dd/MM HH:mm')}
-                      </div>
+                      <div className="text-xs text-dark-500 mt-1">{f.cerrado_a_tiempo ? '✅' : '⚠'} {format(new Date(f.fecha_cierre), 'dd/MM HH:mm')}</div>
                     )}
                   </div>
                 </div>
@@ -222,16 +224,14 @@ export default function FoliosPage() {
               <h3 className="text-lg font-bold text-white">Importar Correo OXXO</h3>
               <button onClick={() => setShowImport(false)} className="text-dark-400 hover:text-white"><X size={20}/></button>
             </div>
-            <p className="text-dark-400 text-sm mb-3">
-              Pega el correo completo. Se detecta automáticamente si es apertura o cierre y extrae la fecha/hora real.
-            </p>
+            <p className="text-dark-400 text-sm mb-1">Pega el correo completo incluyendo la fecha del encabezado.</p>
+            <p className="text-dark-500 text-xs mb-3">Ejemplo: <span className="font-mono text-dark-400">viernes, 15 de mayo, 11:49 a.m.</span></p>
             <textarea value={emailText} onChange={e => setEmailText(e.target.value)}
               rows={10} className="input resize-none font-mono text-xs leading-relaxed"
-              placeholder="Buen día, La tienda OXXO 10MON50NPS..." />
+              placeholder="viernes, 15 de mayo, 11:49 a.m.&#10;&#10;Buen día, La tienda OXXO..." />
             <div className="flex gap-3 mt-4">
               <button onClick={() => setShowImport(false)} className="btn-ghost flex-1">Cancelar</button>
-              <button onClick={handleImport} disabled={importLoading || !emailText.trim()}
-                className="btn-primary flex-1 disabled:opacity-50">
+              <button onClick={handleImport} disabled={importLoading || !emailText.trim()} className="btn-primary flex-1 disabled:opacity-50">
                 {importLoading ? 'Procesando...' : '✦ Procesar Correo'}
               </button>
             </div>
@@ -257,17 +257,17 @@ export default function FoliosPage() {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ['ID Tienda',    showDetail.id_tienda],
-                  ['Ciudad',       showDetail.ciudad],
-                  ['Categoría',    showDetail.categoria],
-                  ['Motivo',       showDetail.motivo],
-                  ['Representante',showDetail.representante_propietario],
-                  ['Prestador',    showDetail.prestador_servicio],
-                  ['Técnico',      showDetail.tecnico_asignado || '—'],
-                  ['Llegada',      showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion),'dd/MM/yyyy HH:mm') : '—'],
-                  ['Vencimiento',  format(new Date(showDetail.fecha_vencimiento),'dd/MM/yyyy HH:mm')],
-                  ['Cerrado',      showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre),'dd/MM/yyyy HH:mm') : '—'],
-                  ['A tiempo',     showDetail.cerrado_a_tiempo === true ? '✅ Sí' : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : '—'],
+                  ['ID Tienda',     showDetail.id_tienda],
+                  ['Ciudad',        showDetail.ciudad],
+                  ['Categoría',     showDetail.categoria],
+                  ['Motivo',        showDetail.motivo],
+                  ['Representante', showDetail.representante_propietario],
+                  ['Prestador',     showDetail.prestador_servicio],
+                  ['Técnico',       showDetail.tecnico_asignado || '—'],
+                  ['Llegada',       showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion),'dd/MM/yyyy HH:mm') : '—'],
+                  ['Vencimiento',   format(new Date(showDetail.fecha_vencimiento),'dd/MM/yyyy HH:mm')],
+                  ['Cerrado',       showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre),'dd/MM/yyyy HH:mm') : '—'],
+                  ['A tiempo',      showDetail.cerrado_a_tiempo === true ? '✅ Sí' : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : '—'],
                 ].map(([k,v]) => v ? (
                   <div key={k as string} className="bg-dark-900 rounded-lg p-3">
                     <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">{k}</div>
@@ -299,11 +299,18 @@ export default function FoliosPage() {
                   <div className="text-sm text-dark-200">{showDetail.comentarios_cierre}</div>
                 </div>
               )}
-              {showDetail.estatus !== 'Cerrado' && (
-                <button onClick={() => closeFolio(showDetail)} className="btn-primary w-full mt-2">
-                  ✓ Cerrar Folio Manualmente
-                </button>
-              )}
+              <div className="flex flex-col gap-2 mt-2">
+                {showDetail.estatus !== 'Cerrado' && (
+                  <button onClick={() => closeFolio(showDetail)} className="btn-primary w-full">
+                    ✓ Cerrar Folio Manualmente
+                  </button>
+                )}
+                {isAdmin && (
+                  <button onClick={() => deleteFolio(showDetail)} className="btn-danger w-full flex items-center justify-center gap-2">
+                    <Trash2 size={14}/> Eliminar Folio
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
