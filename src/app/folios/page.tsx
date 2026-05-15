@@ -5,25 +5,21 @@ import { Countdown } from '@/components/ui/Countdown'
 import { createClient } from '@/lib/supabase/client'
 import { parseCorreo, calcularFechaVencimiento } from '@/lib/parser'
 import { toast } from 'sonner'
-import { Search, Plus, Mail, ChevronDown, ChevronUp, X } from 'lucide-react'
-import type { Folio, Prioridad } from '@/types'
+import { Search, Mail, X } from 'lucide-react'
+import type { Folio } from '@/types'
 import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 
 export default function FoliosPage() {
   const { folios, loading, refetch } = useFolios()
   const supabase = createClient()
 
-  // Filters
-  const [search, setSearch]     = useState('')
-  const [fCiudad, setFCiudad]   = useState('Todas')
+  const [search, setSearch]       = useState('')
+  const [fCiudad, setFCiudad]     = useState('Todas')
   const [fPrioridad, setFPrioridad] = useState('Todas')
-  const [fEstatus, setFEstatus] = useState('Todos')
-
-  // Modals
-  const [showImport, setShowImport]       = useState(false)
-  const [showDetail, setShowDetail]       = useState<Folio | null>(null)
-  const [emailText, setEmailText]         = useState('')
+  const [fEstatus, setFEstatus]   = useState('Todos')
+  const [showImport, setShowImport] = useState(false)
+  const [showDetail, setShowDetail] = useState<Folio | null>(null)
+  const [emailText, setEmailText] = useState('')
   const [importLoading, setImportLoading] = useState(false)
 
   const filtered = useMemo(() => {
@@ -52,39 +48,36 @@ export default function FoliosPage() {
     try {
       const parsed = parseCorreo(emailText)
 
-      // Save raw email
       await supabase.from('correos_importados').insert({
         tipo: parsed.tipo, contenido: emailText, folio_detectado: parsed.ticket, procesado: false,
       })
 
       if (parsed.tipo === 'cierre') {
-        // Find and close folio
         const { data: existing } = await supabase
           .from('folios').select('id,fecha_vencimiento,estatus').eq('numero_folio', parsed.ticket!).single()
         if (existing) {
-          const now = new Date()
+          const fechaCierre = parsed.fecha_correo ? new Date(parsed.fecha_correo) : new Date()
           const vencimiento = new Date(existing.fecha_vencimiento)
-          const cerradoATiempo = now <= vencimiento
-          const tiempoVencidoMins = cerradoATiempo ? 0 : Math.floor((now.getTime() - vencimiento.getTime()) / 60000)
+          const cerradoATiempo = fechaCierre <= vencimiento
+          const tiempoVencidoMins = cerradoATiempo ? 0 : Math.floor((fechaCierre.getTime() - vencimiento.getTime()) / 60000)
           await supabase.from('folios').update({
-            estatus: 'Cerrado', fecha_cierre: now.toISOString(),
+            estatus: 'Cerrado', fecha_cierre: fechaCierre.toISOString(),
             comentarios_cierre: parsed.comentarios_cierre,
             nombre_persona_cierra: parsed.nombre_persona_cierra,
             cerrado_a_tiempo: cerradoATiempo,
             tiempo_vencido_mins: tiempoVencidoMins,
-            updated_at: now.toISOString(),
+            updated_at: new Date().toISOString(),
           }).eq('id', existing.id)
           await supabase.from('correos_importados').update({ procesado: true, folio_id: existing.id, resultado: 'cerrado' }).eq('folio_detectado', parsed.ticket!)
           toast.success(`Folio #${parsed.ticket} cerrado ${cerradoATiempo ? '✅ a tiempo' : '⚠ con retraso'}`)
         } else {
-          toast.warning(`Folio #${parsed.ticket} no encontrado. Se guardó para conciliación manual.`)
+          toast.warning(`Folio #${parsed.ticket} no encontrado. Guardado para conciliación.`)
         }
       } else if (parsed.tipo === 'apertura' && parsed.ticket) {
-        // Check duplicate
         const { data: dup } = await supabase.from('folios').select('id').eq('numero_folio', parsed.ticket).single()
         if (dup) { toast.warning(`El folio #${parsed.ticket} ya existe.`); setImportLoading(false); return }
-
-        const fechaVencimiento = calcularFechaVencimiento(parsed.prioridad || 'MEDIA')
+        const fechaLlegada = parsed.fecha_correo ? new Date(parsed.fecha_correo) : new Date()
+        const fechaVencimiento = calcularFechaVencimiento(parsed.prioridad || 'MEDIA', fechaLlegada)
         await supabase.from('folios').insert({
           numero_folio: parsed.ticket,
           id_tienda: parsed.id_tienda,
@@ -98,12 +91,12 @@ export default function FoliosPage() {
           representante_propietario: parsed.representante_propietario,
           prestador_servicio: parsed.prestador_servicio,
           fecha_vencimiento: fechaVencimiento.toISOString(),
+          fecha_importacion: fechaLlegada.toISOString(),
           estatus: 'Abierto',
           correo_origen: emailText,
-          fecha_importacion: new Date().toISOString(),
         })
         await supabase.from('correos_importados').update({ procesado: true, resultado: 'apertura_creada' }).eq('folio_detectado', parsed.ticket)
-        toast.success(`Folio #${parsed.ticket} creado — ${parsed.prioridad} — Vence en ${parsed.prioridad === 'ALTA' ? '6h' : parsed.prioridad === 'MEDIA' ? '72h' : '29d'}`)
+        toast.success(`Folio #${parsed.ticket} creado — ${parsed.prioridad} — Llegó: ${fechaLlegada.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})}`)
       } else {
         toast.error('No se pudo detectar el tipo de correo')
       }
@@ -139,25 +132,21 @@ export default function FoliosPage() {
 
   return (
     <div className="space-y-5 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Folios</h1>
           <p className="text-dark-400 text-sm mt-0.5">{filtered.length} de {folios.length} folios</p>
         </div>
         <button onClick={() => setShowImport(true)} className="btn-primary flex items-center gap-2">
-          <Mail size={15} />
-          Importar Correo
+          <Mail size={15} /> Importar Correo
         </button>
       </div>
 
-      {/* Filters */}
       <div className="card p-4 space-y-3">
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por folio, tienda, falla…"
-            className="input pl-9" />
+            placeholder="Buscar por folio, tienda, falla…" className="input pl-9" />
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -175,7 +164,6 @@ export default function FoliosPage() {
         </div>
       </div>
 
-      {/* List */}
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-8 h-8 border-2 border-brand-green border-t-transparent rounded-full animate-spin" />
@@ -194,15 +182,20 @@ export default function FoliosPage() {
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-mono text-xs text-dark-400">#{f.numero_folio}</span>
                       <span className={`badge-${f.prioridad.toLowerCase()}`}>{f.prioridad}</span>
-                      <span className={`badge-${f.estatus.toLowerCase()}`}>{f.estatus}</span>
+                      <span className={`badge-${isVencido ? 'vencido' : f.estatus.toLowerCase()}`}>{isVencido && f.estatus !== 'Vencido' ? 'VENCIDO' : f.estatus}</span>
                       {f.id_tienda && <span className="text-xs text-dark-500">{f.id_tienda}</span>}
                     </div>
                     <div className="font-semibold text-dark-100 text-sm truncate">{f.tienda_nombre}</div>
                     <div className="text-xs text-dark-400 mt-0.5 truncate">{f.falla || f.motivo}</div>
-                    <div className="text-xs text-dark-500 mt-0.5">{f.ciudad} {f.categoria && `· ${f.categoria}`}</div>
+                    <div className="text-xs text-dark-500 mt-0.5">{f.ciudad}{f.categoria && ` · ${f.categoria}`}</div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <Countdown fechaVencimiento={f.fecha_vencimiento} estatus={f.estatus} prioridad={f.prioridad} showBar />
+                    <Countdown fechaVencimiento={f.fecha_vencimiento} estatus={isVencido ? 'Vencido' : f.estatus} prioridad={f.prioridad} showBar />
+                    {f.fecha_importacion && (
+                      <div className="text-xs text-dark-500 mt-1">
+                        Llegó: {format(new Date(f.fecha_importacion), 'dd/MM HH:mm')}
+                      </div>
+                    )}
                     {f.fecha_cierre && (
                       <div className="text-xs text-dark-500 mt-1">
                         {f.cerrado_a_tiempo ? '✅' : '⚠'} {format(new Date(f.fecha_cierre), 'dd/MM HH:mm')}
@@ -229,7 +222,9 @@ export default function FoliosPage() {
               <h3 className="text-lg font-bold text-white">Importar Correo OXXO</h3>
               <button onClick={() => setShowImport(false)} className="text-dark-400 hover:text-white"><X size={20}/></button>
             </div>
-            <p className="text-dark-400 text-sm mb-3">Pega el correo completo. Se detecta automáticamente si es apertura o cierre.</p>
+            <p className="text-dark-400 text-sm mb-3">
+              Pega el correo completo. Se detecta automáticamente si es apertura o cierre y extrae la fecha/hora real.
+            </p>
             <textarea value={emailText} onChange={e => setEmailText(e.target.value)}
               rows={10} className="input resize-none font-mono text-xs leading-relaxed"
               placeholder="Buen día, La tienda OXXO 10MON50NPS..." />
@@ -262,53 +257,48 @@ export default function FoliosPage() {
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ['ID Tienda', showDetail.id_tienda],
-                  ['Ciudad', showDetail.ciudad],
-                  ['Categoría', showDetail.categoria],
-                  ['Motivo', showDetail.motivo],
-                  ['Representante', showDetail.representante_propietario],
-                  ['Prestador', showDetail.prestador_servicio],
-                  ['Técnico', showDetail.tecnico_asignado || '—'],
-                  ['Llegada', showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion), 'dd/MM/yyyy HH:mm') : '—'],
-                  ['Vencimiento', format(new Date(showDetail.fecha_vencimiento), 'dd/MM/yyyy HH:mm')],
-                  ['Cerrado', showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre), 'dd/MM/yyyy HH:mm') : '—'],
-                  ['A tiempo', showDetail.cerrado_a_tiempo === true ? '✅ Sí' : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : '—'],
-                ].map(([k, v]) => v ? (
+                  ['ID Tienda',    showDetail.id_tienda],
+                  ['Ciudad',       showDetail.ciudad],
+                  ['Categoría',    showDetail.categoria],
+                  ['Motivo',       showDetail.motivo],
+                  ['Representante',showDetail.representante_propietario],
+                  ['Prestador',    showDetail.prestador_servicio],
+                  ['Técnico',      showDetail.tecnico_asignado || '—'],
+                  ['Llegada',      showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion),'dd/MM/yyyy HH:mm') : '—'],
+                  ['Vencimiento',  format(new Date(showDetail.fecha_vencimiento),'dd/MM/yyyy HH:mm')],
+                  ['Cerrado',      showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre),'dd/MM/yyyy HH:mm') : '—'],
+                  ['A tiempo',     showDetail.cerrado_a_tiempo === true ? '✅ Sí' : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : '—'],
+                ].map(([k,v]) => v ? (
                   <div key={k as string} className="bg-dark-900 rounded-lg p-3">
                     <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">{k}</div>
                     <div className="text-sm text-dark-100">{v}</div>
                   </div>
                 ) : null)}
               </div>
-
               {showDetail.estatus !== 'Cerrado' && (
                 <div className="bg-dark-900 rounded-lg p-3">
                   <div className="text-xs text-dark-500 uppercase tracking-wide mb-2">Tiempo Restante</div>
                   <Countdown fechaVencimiento={showDetail.fecha_vencimiento} estatus={showDetail.estatus} prioridad={showDetail.prioridad} showBar />
                 </div>
               )}
-
               {showDetail.falla_especifica && (
                 <div className="bg-dark-900 rounded-lg p-3">
                   <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Falla Específica</div>
                   <div className="text-sm text-dark-100">{showDetail.falla_especifica}</div>
                 </div>
               )}
-
               {showDetail.correo_origen && (
                 <div className="bg-dark-900 rounded-lg p-3">
                   <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Correo Original</div>
                   <pre className="text-xs text-dark-300 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">{showDetail.correo_origen}</pre>
                 </div>
               )}
-
               {showDetail.comentarios_cierre && (
                 <div className="bg-dark-900 rounded-lg p-3">
                   <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Comentarios Cierre</div>
                   <div className="text-sm text-dark-200">{showDetail.comentarios_cierre}</div>
                 </div>
               )}
-
               {showDetail.estatus !== 'Cerrado' && (
                 <button onClick={() => closeFolio(showDetail)} className="btn-primary w-full mt-2">
                   ✓ Cerrar Folio Manualmente
