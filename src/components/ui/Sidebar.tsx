@@ -2,18 +2,27 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, FileText, Flame, BarChart3, Users, MessageSquare, LogOut, Menu, X } from 'lucide-react'
+import {
+  LayoutDashboard, FileText, BarChart3, Flame,
+  Users, MessageSquare, LogOut, Menu, X, Mail,
+  Clock, BarChart2, Wrench, Lightbulb
+} from 'lucide-react'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Usuario } from '@/types'
 
 const NAV = [
-  { href: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard'  },
-  { href: '/folios',     icon: FileText,        label: 'Folios'     },
-  { href: '/super-heat', icon: Flame,           label: 'Super Heat' },
-  { href: '/reportes',   icon: BarChart3,       label: 'Reportes'   },
-  { href: '/tecnicos',   icon: Users,           label: 'Técnicos'   },
-  { href: '/whatsapp',   icon: MessageSquare,   label: 'WhatsApp'   },
+  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'       },
+  { href: '/folios',       icon: FileText,        label: 'Folios'          },
+  { href: '/reportes',     icon: BarChart3,       label: 'Reportes'        },
+  { href: '/super-heat',   icon: Flame,           label: 'Super Heat'      },
+  { href: '/tecnicos',     icon: Users,           label: 'Tecnicos'        },
+  { href: '/plan-accion',  icon: Lightbulb,       label: 'Plan de Accion'  },
+  { href: '/whatsapp',     icon: MessageSquare,   label: 'WhatsApp'        },
+  { href: '/hoy',          icon: Clock,           label: 'Hoy se Vence'    },
+  { href: '/reporte-semanal', icon: BarChart2,    label: 'Reporte Semanal' },
+  { href: '/operador',     icon: Wrench,          label: 'Modo Operador'   },
+  { href: '/automatizacion',icon: Mail,           label: 'Outlook Auto'    },
 ]
 
 export function Sidebar({ user }: { user: Usuario | null }) {
@@ -29,7 +38,7 @@ export function Sidebar({ user }: { user: Usuario | null }) {
 
   const navContent = (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-4 border-b border-dark-700">
+      <div className="px-4 py-4 border-b border-dark-700 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-white flex items-center justify-center p-0.5">
             <Image src="/logo.png" alt="CONSTRUREY" width={36} height={36} className="object-contain" />
@@ -40,19 +49,23 @@ export function Sidebar({ user }: { user: Usuario | null }) {
           </div>
         </div>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {NAV.map(({ href, icon: Icon, label }) => {
-          const active = pathname.startsWith(href)
+          const active = pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
           return (
             <Link key={href} href={href} onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active ? 'bg-brand-green/10 text-brand-green border border-brand-green/20' : 'text-dark-400 hover:text-dark-100 hover:bg-dark-700'}`}>
-              <Icon size={17} />
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                active
+                  ? 'bg-brand-green/10 text-brand-green border border-brand-green/20'
+                  : 'text-dark-400 hover:text-dark-100 hover:bg-dark-700'
+              }`}>
+              <Icon size={16} />
               {label}
             </Link>
           )
         })}
       </nav>
-      <div className="px-3 py-4 border-t border-dark-700">
+      <div className="px-3 py-4 border-t border-dark-700 flex-shrink-0">
         {user && (
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
             <div className="w-7 h-7 rounded-full bg-dark-600 flex items-center justify-center flex-shrink-0">
@@ -65,8 +78,7 @@ export function Sidebar({ user }: { user: Usuario | null }) {
           </div>
         )}
         <button onClick={logout} className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm text-dark-400 hover:text-red-400 hover:bg-red-500/10 transition-all">
-          <LogOut size={17} />
-          Cerrar sesión
+          <LogOut size={16} /> Cerrar sesion
         </button>
       </div>
     </div>
