@@ -17,7 +17,7 @@ const NAV = [
   { href: '/reportes',     icon: BarChart3,       label: 'Reportes'        },
   { href: '/super-heat',   icon: Flame,           label: 'Super Heat'      },
   { href: '/tecnicos',     icon: Users,           label: 'Tecnicos'        },
-  { href: '/plan-accion',  icon: Lightbulb,       label: 'Plan de Accion'  },
+  { href: '/plan-acci%C3%B3n',  icon: Lightbulb,       label: 'Plan de Accion'  },
   { href: '/whatsapp',     icon: MessageSquare,   label: 'WhatsApp'        },
   { href: '/hoy',          icon: Clock,           label: 'Hoy se Vence'    },
   { href: '/reporte-semanal', icon: BarChart2,    label: 'Reporte Semanal' },
