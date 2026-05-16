@@ -23,11 +23,27 @@ export default function HoyPage() {
       .filter(f => {
         if (f.estatus === 'Cerrado') return false
         const venc = new Date(f.fecha_vencimiento)
-        return isToday(venc) || (new Date(f.fecha_vencimiento).getTime() - Date.now()) / 1000 <= 0
+        const secs = (venc.getTime() - Date.now()) / 1000
+        return isToday(venc) || secs <= 0
       })
       .sort((a, b) => new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime())
   }, [folios])
 
   const vencidos = hoy.filter(f => (new Date(f.fecha_vencimiento).getTime() - Date.now()) / 1000 <= 0)
   const activos  = hoy.filter(f => (new Date(f.fecha_vencimiento).getTime() - Date.now()) / 1000 > 0)
-  const altas    = activos.filter(f => f.prioridad === '
+  const altas    = activos.filter(f => f.prioridad === 'ALTA')
+  const medias   = activos.filter(f => f.prioridad === 'MEDIA')
+  const bajas    = activos.filter(f => f.prioridad === 'BAJA')
+
+  async function handleClose() {
+    if (!closing || !comment.trim()) return
+    setSaving(true)
+    const now = new Date()
+    const venc = new Date(closing.fecha_vencimiento)
+    const aTiempo = now <= venc
+    await supabase.from('folios').update({
+      estatus: 'Cerrado',
+      fecha_cierre: now.toISOString(),
+      comentarios_cierre: comment,
+      cerrado_a_tiempo: aTiempo,
+      tiempo_vencido_mins: aTiempo ? 0 : Math.floor((now.getTime() - venc.getTime()) /
