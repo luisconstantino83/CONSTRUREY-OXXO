@@ -1,3 +1,4 @@
+// verificaciones
 “use client”
 import { useState, useEffect, useMemo, useCallback } from “react”
 import { createClient } from “@/lib/supabase/client”
