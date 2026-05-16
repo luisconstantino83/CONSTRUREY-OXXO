@@ -5,24 +5,25 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, BarChart3, Flame,
   Users, MessageSquare, LogOut, Menu, X, Mail,
-  Clock, BarChart2, Wrench, Lightbulb
+  Clock, BarChart2, Wrench, Lightbulb, ClipboardList
 } from 'lucide-react'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Usuario } from '@/types'
 
 const NAV = [
-  { href: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'       },
-  { href: '/folios',       icon: FileText,        label: 'Folios'          },
-  { href: '/reportes',     icon: BarChart3,       label: 'Reportes'        },
-  { href: '/super-heat',   icon: Flame,           label: 'Super Heat'      },
-  { href: '/tecnicos',     icon: Users,           label: 'Tecnicos'        },
-  { href: '/plan-accion',  icon: Lightbulb,  label: 'Plan de Accion' },
-  { href: '/whatsapp',     icon: MessageSquare,   label: 'WhatsApp'        },
-  { href: '/hoy',          icon: Clock,           label: 'Hoy se Vence'    },
-  { href: '/reporte-semanal', icon: BarChart2,    label: 'Reporte Semanal' },
-  { href: '/operador',     icon: Wrench,          label: 'Modo Operador'   },
-  { href: '/automatizacion',icon: Mail,           label: 'Outlook Auto'    },
+  { href: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard'      },
+  { href: '/folios',         icon: FileText,        label: 'Folios'         },
+  { href: '/reportes',       icon: BarChart3,       label: 'Reportes'       },
+  { href: '/super-heat',     icon: Flame,           label: 'Super Heat'     },
+  { href: '/tecnicos',       icon: Users,           label: 'Tecnicos'       },
+  { href: '/plan-accion',    icon: Lightbulb,       label: 'Plan de Accion' },
+  { href: '/verificaciones', icon: ClipboardList,   label: 'Verificaciones' },
+  { href: '/whatsapp',       icon: MessageSquare,   label: 'WhatsApp'       },
+  { href: '/hoy',            icon: Clock,           label: 'Hoy se Vence'   },
+  { href: '/reporte-semanal',icon: BarChart2,       label: 'Reporte Semanal'},
+  { href: '/operador',       icon: Wrench,          label: 'Modo Operador'  },
+  { href: '/automatizacion', icon: Mail,            label: 'Outlook Auto'   },
 ]
 
 export function Sidebar({ user }: { user: Usuario | null }) {
