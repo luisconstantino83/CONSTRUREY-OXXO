@@ -41,9 +41,28 @@ export default function HoyPage() {
     const now = new Date()
     const venc = new Date(closing.fecha_vencimiento)
     const aTiempo = now <= venc
+    async function handleClose() {
+    if (!closing || !comment.trim()) return
+    setSaving(true)
+    const now = new Date()
+    const venc = new Date(closing.fecha_vencimiento)
+    const aTiempo = now <= venc
+    const mins = aTiempo ? 0 : Math.floor((now.getTime() - venc.getTime()) / 60000)
     await supabase.from('folios').update({
       estatus: 'Cerrado',
       fecha_cierre: now.toISOString(),
       comentarios_cierre: comment,
       cerrado_a_tiempo: aTiempo,
-      tiempo_vencido_mins: aTiempo ? 0 : Math.floor((now.getTime() - venc.getTime()) /
+      tiempo_vencido_mins: mins,
+      updated_at: now.toISOString(),
+    }).eq('id', closing.id)
+    toast.success('Folio cerrado')
+    setClosing(null)
+    setComment('')
+    setSaving(false)
+    refetch()
+  }
+    
+    await supabase.from('folios').update({
+      estatus: 'Cerrado',
+     
