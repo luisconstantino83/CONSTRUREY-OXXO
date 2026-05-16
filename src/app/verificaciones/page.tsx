@@ -12,7 +12,6 @@ interface Verificacion {
   zona?: string
   plaza?: string
   tipo_encuesta?: string
-  fecha_verificacion?: string
   numero?: string
   pendiente: string
   comentario?: string
@@ -28,15 +27,12 @@ interface ExcelRow {
   tienda_nombre?: string
   zona?: string
   plaza?: string
-  tipo_encuesta?: string
-  fecha_verificacion?: string
   numero?: string
   pendiente?: string
   comentario?: string
   categoria?: string
   causa_raiz?: string
   flex_field?: string
-  [key: string]: string | undefined
 }
 
 const FLEX_CAT: Record<string, string> = {
@@ -58,35 +54,33 @@ function norm(h: string) {
   return h.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g, '_').trim()
 }
 
-function mapRow(row: Record<string, unknown>): ExcelRow {
+function mapRow(row: Record<string, unknown>, tienda: string, zona: string, plaza: string): ExcelRow {
   const n: Record<string, string> = {}
   Object.entries(row).forEach(([k, v]) => { n[norm(k)] = String(v ?? '').trim() })
   return {
-    zona:               n['zona'] || n['region'] || '',
-    plaza:              n['plaza'] || n['mercado'] || '',
-    tienda_nombre:      n['tienda'] || n['nombre_tienda'] || n['tienda_nombre'] || '',
-    tipo_encuesta:      n['tipo_encuesta'] || n['tipo'] || n['encuesta'] || '',
-    fecha_verificacion: n['fecha'] || n['fecha_verificacion'] || '',
-    numero:             n['numero'] || n['num'] || '',
-    pendiente:          n['pendiente'] || n['observacion'] || n['descripcion'] || '',
-    comentario:         n['comentario'] || n['comentarios'] || '',
-    categoria:          n['categoria'] || n['cat'] || '',
-    causa_raiz:         n['causa_raiz'] || n['causa'] || '',
-    flex_field:         n['flexfield'] || n['flex_field'] || n['flex'] || '',
+    zona,
+    plaza,
+    tienda_nombre: tienda,
+    numero:     n['no'] || n['num'] || n['numero'] || '',
+    pendiente:  n['pendiente'] || n['observacion'] || n['descripcion'] || '',
+    comentario: n['comentario'] || n['comentarios'] || '',
+    categoria:  n['categoria'] || n['cat'] || '',
+    causa_raiz: n['causa_raiz'] || n['causa'] || '',
+    flex_field: n['flexfield'] || n['flex_field'] || n['flex'] || '',
   }
 }
 
 export default function VerificacionesPage() {
   const supabase = createClient()
   const [verificaciones, setVerificaciones] = useState<Verificacion[]>([])
-  const [loading, setLoading]               = useState(true)
-  const [search, setSearch]                 = useState('')
-  const [fEstatus, setFEstatus]             = useState('todos')
-  const [expanded, setExpanded]             = useState<string | null>(null)
-  const [showImport, setShowImport]         = useState(false)
-  const [previewRows, setPreviewRows]       = useState<ExcelRow[]>([])
-  const [importing, setImporting]           = useState(false)
-  const [editingId, setEditingId]           = useState<string | null>(null)
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
+  const [fEstatus, setFEstatus] = useState('todos')
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
+  const [previewRows, setPreviewRows] = useState<ExcelRow[]>([])
+  const [importing, setImporting] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     const { data } = await supabase.from('verificaciones').select('*').order('tienda_nombre').order('created_at', { ascending: false })
@@ -142,8 +136,12 @@ export default function VerificacionesPage() {
       const data = new Uint8Array(ev.target?.result as ArrayBuffer)
       const wb = XLSX.read(data, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
-      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
-      const rows = raw.map(mapRow).filter(r => r.pendiente && r.tienda_nombre)
+      const rawAll = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1 }) as string[][]
+      const zona   = String(rawAll[0]?.[1] ?? '').trim()
+      const plaza  = String(rawAll[1]?.[1] ?? '').trim()
+      const tienda = String(rawAll[2]?.[1] ?? '').trim()
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '', range: 4 })
+      const rows = raw.map(r => mapRow(r, tienda, zona, plaza)).filter(r => r.pendiente && r.tienda_nombre)
       setPreviewRows(rows)
       setShowImport(true)
     }
@@ -153,21 +151,19 @@ export default function VerificacionesPage() {
   async function confirmImport() {
     setImporting(true)
     const inserts = previewRows.map(r => ({
-      tienda_nombre:      r.tienda_nombre || 'Sin tienda',
-      zona:               r.zona,
-      plaza:              r.plaza,
-      tipo_encuesta:      r.tipo_encuesta,
-      fecha_verificacion: r.fecha_verificacion || null,
-      numero:             r.numero,
-      pendiente:          r.pendiente || 'Sin descripcion',
-      comentario:         r.comentario,
-      categoria:          r.categoria || (r.flex_field ? FLEX_CAT[r.flex_field.toUpperCase()] : null),
-      causa_raiz:         r.causa_raiz,
-      flex_field:         r.flex_field,
-      estatus:            'pendiente',
+      tienda_nombre: r.tienda_nombre || 'Sin tienda',
+      zona:          r.zona,
+      plaza:         r.plaza,
+      numero:        r.numero,
+      pendiente:     r.pendiente || 'Sin descripcion',
+      comentario:    r.comentario,
+      categoria:     r.categoria || (r.flex_field ? FLEX_CAT[r.flex_field.toUpperCase()] : null),
+      causa_raiz:    r.causa_raiz,
+      flex_field:    r.flex_field,
+      estatus:       'pendiente',
     }))
     const { error } = await supabase.from('verificaciones').insert(inserts)
-    if (error) { toast.error('Error al importar') } 
+    if (error) { toast.error('Error al importar') }
     else { toast.success(`${inserts.length} verificaciones importadas`); setShowImport(false); setPreviewRows([]); fetchData() }
     setImporting(false)
   }
@@ -254,9 +250,9 @@ export default function VerificacionesPage() {
                     <div className="text-left min-w-0">
                       <div className="font-semibold text-dark-100 truncate">{t.nombre}</div>
                       <div className="flex gap-3 mt-1 flex-wrap">
-                        {t.pendientes > 0 && <span className="text-xs text-yellow-400">⏳ {t.pendientes} pendientes</span>}
-                        {t.en_proceso > 0 && <span className="text-xs text-blue-400">🔄 {t.en_proceso} en proceso</span>}
-                        {t.terminados > 0 && <span className="text-xs text-green-400">✅ {t.terminados} terminados</span>}
+                        {t.pendientes > 0 && <span className="text-xs text-yellow-400">{t.pendientes} pendientes</span>}
+                        {t.en_proceso > 0 && <span className="text-xs text-blue-400">{t.en_proceso} en proceso</span>}
+                        {t.terminados > 0 && <span className="text-xs text-green-400">{t.terminados} terminados</span>}
                       </div>
                     </div>
                   </div>
@@ -286,7 +282,7 @@ export default function VerificacionesPage() {
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`text-sm font-medium ${v.estatus === 'terminado' ? 'line-through text-dark-500' : 'text-dark-100'}`}>{v.pendiente}</span>
                                 <span className={`text-xs px-2 py-0.5 rounded-full border ${sc.bg} ${sc.color} ${sc.border}`}>{sc.label}</span>
-                                {isOld && <span className="text-xs text-orange-400">⚠ {dias}d</span>}
+                                {isOld && <span className="text-xs text-orange-400">{dias}d</span>}
                               </div>
                               {v.comentario && <div className="text-xs text-dark-400 mt-0.5">{v.comentario}</div>}
                               <div className="flex gap-3 mt-1 flex-wrap">
@@ -300,7 +296,7 @@ export default function VerificacionesPage() {
                                   placeholder="Responsable" className="input text-xs py-1 mt-2 w-full max-w-xs" />
                               ) : (
                                 <button onClick={() => setEditingId(v.id)} className="text-xs text-dark-500 hover:text-dark-300 mt-1.5">
-                                  👤 {v.responsable || 'Asignar responsable'}
+                                  {v.responsable || 'Asignar responsable'}
                                 </button>
                               )}
                             </div>
@@ -321,7 +317,7 @@ export default function VerificacionesPage() {
           <div className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
             <div className="px-6 py-4 border-b border-dark-700 flex items-center justify-between flex-shrink-0">
               <div>
-                <h3 className="font-bold text-white">Vista previa — {previewRows.length} registros</h3>
+                <h3 className="font-bold text-white">Vista previa - {previewRows.length} registros</h3>
                 <p className="text-xs text-dark-400 mt-0.5">Revisa antes de confirmar</p>
               </div>
               <button onClick={() => { setShowImport(false); setPreviewRows([]) }} className="text-dark-400 hover:text-white"><X size={20}/></button>
@@ -344,7 +340,7 @@ export default function VerificacionesPage() {
             </div>
             <div className="px-6 py-4 border-t border-dark-700 flex gap-3 flex-shrink-0">
               <button onClick={() => { setShowImport(false); setPreviewRows([]) }} className="btn-ghost flex-1">Cancelar</button>
-              <button onClick={confirmImport} disabled={importing} className="btn-primary flex-1 disabled:opacity-50">
+              <button onClick={confirmImport} disabled={importing || previewRows.length === 0} className="btn-primary flex-1 disabled:opacity-50">
                 {importing ? 'Importando...' : `Confirmar ${previewRows.length} registros`}
               </button>
             </div>
