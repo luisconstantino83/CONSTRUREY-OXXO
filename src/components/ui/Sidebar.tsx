@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, FileText, BarChart3, Flame,
   Users, MessageSquare, LogOut, Menu, X, Mail,
-  Clock, BarChart2, Wrench, Lightbulb, ClipboardList
+  Clock, BarChart2, Wrench, Lightbulb, ClipboardList, MapPin
 } from 'lucide-react'
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -15,6 +15,7 @@ const NAV = [
   { href: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard'      },
   { href: '/folios',         icon: FileText,        label: 'Folios'         },
   { href: '/reportes',       icon: BarChart3,       label: 'Reportes'       },
+  { href: '/mapa',           icon: MapPin,          label: 'Mapa'           },
   { href: '/super-heat',     icon: Flame,           label: 'Super Heat'     },
   { href: '/tecnicos',       icon: Users,           label: 'Tecnicos'       },
   { href: '/plan-accion',    icon: Lightbulb,       label: 'Plan de Accion' },
