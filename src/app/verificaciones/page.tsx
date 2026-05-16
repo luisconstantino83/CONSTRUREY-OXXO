@@ -3,15 +3,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import * as XLSX from 'xlsx'
-import { ClipboardList, Upload, X, CheckCircle, Clock, AlertTriangle, ChevronDown, ChevronUp, Search, Building2 } from 'lucide-react'
+import { ClipboardList, Upload, X, CheckCircle, Clock, AlertTriangle, ChevronDown, ChevronUp, Search, Building2, BarChart3 } from 'lucide-react'
 import { differenceInDays } from 'date-fns'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 
 interface Verificacion {
   id: string
   tienda_nombre: string
   zona?: string
   plaza?: string
-  tipo_encuesta?: string
   numero?: string
   pendiente: string
   comentario?: string
@@ -21,6 +21,15 @@ interface Verificacion {
   estatus: 'pendiente' | 'en_proceso' | 'terminado'
   responsable?: string
   created_at: string
+}
+
+interface TiendaIma {
+  id: string
+  cr?: string
+  tienda_nombre: string
+  ciudad?: string
+  score_ima?: number
+  periodo?: string
 }
 
 interface ExcelRow {
@@ -58,9 +67,7 @@ function mapRow(row: Record<string, unknown>, tienda: string, zona: string, plaz
   const n: Record<string, string> = {}
   Object.entries(row).forEach(([k, v]) => { n[norm(k)] = String(v ?? '').trim() })
   return {
-    zona,
-    plaza,
-    tienda_nombre: tienda,
+    zona, plaza, tienda_nombre: tienda,
     numero:     n['no'] || n['num'] || n['numero'] || '',
     pendiente:  n['pendiente'] || n['observacion'] || n['descripcion'] || '',
     comentario: n['comentario'] || n['comentarios'] || '',
@@ -70,21 +77,45 @@ function mapRow(row: Record<string, unknown>, tienda: string, zona: string, plaz
   }
 }
 
+function getScoreColor(score?: number) {
+  if (!score) return 'text-dark-400'
+  if (score < 80) return 'text-red-400'
+  if (score < 85) return 'text-orange-400'
+  if (score < 90) return 'text-yellow-400'
+  return 'text-green-400'
+}
+
+function getScoreBg(score?: number) {
+  if (!score) return '#64748b'
+  if (score < 80) return '#ef4444'
+  if (score < 85) return '#f97316'
+  if (score < 90) return '#eab308'
+  return '#22c55e'
+}
+
 export default function VerificacionesPage() {
   const supabase = createClient()
   const [verificaciones, setVerificaciones] = useState<Verificacion[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [search, setSearch]     = useState('')
-  const [fEstatus, setFEstatus] = useState('todos')
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [showImport, setShowImport] = useState(false)
-  const [previewRows, setPreviewRows] = useState<ExcelRow[]>([])
-  const [importing, setImporting] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const [tiendasIma, setTiendasIma]         = useState<TiendaIma[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [search, setSearch]                 = useState('')
+  const [fEstatus, setFEstatus]             = useState('todos')
+  const [fCiudad, setFCiudad]               = useState('todas')
+  const [expanded, setExpanded]             = useState<string | null>(null)
+  const [showImport, setShowImport]         = useState(false)
+  const [showGrafica, setShowGrafica]       = useState(false)
+  const [previewRows, setPreviewRows]       = useState<ExcelRow[]>([])
+  const [importing, setImporting]           = useState(false)
+  const [editingId, setEditingId]           = useState<string | null>(null)
+  const [editingIma, setEditingIma]         = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
-    const { data } = await supabase.from('verificaciones').select('*').order('tienda_nombre').order('created_at', { ascending: false })
-    if (data) setVerificaciones(data as Verificacion[])
+    const [{ data: verif }, { data: ima }] = await Promise.all([
+      supabase.from('verificaciones').select('*').order('tienda_nombre').order('created_at', { ascending: false }),
+      supabase.from('tiendas_ima').select('*').order('score_ima', { ascending: true }),
+    ])
+    if (verif) setVerificaciones(verif as Verificacion[])
+    if (ima)   setTiendasIma(ima as TiendaIma[])
     setLoading(false)
   }, [supabase])
 
@@ -92,13 +123,26 @@ export default function VerificacionesPage() {
     fetchData()
     const ch = supabase.channel('verif-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'verificaciones' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tiendas_ima' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [fetchData, supabase])
 
+  // Map score IMA por tienda
+  const imaMap = useMemo(() => {
+    const m: Record<string, number> = {}
+    tiendasIma.forEach(t => { if (t.score_ima) m[t.tienda_nombre.toLowerCase()] = t.score_ima })
+    return m
+  }, [tiendasIma])
+
   const tiendas = useMemo(() => {
     const filtered = verificaciones.filter(v => {
       if (fEstatus !== 'todos' && v.estatus !== fEstatus) return false
+      if (fCiudad !== 'todas') {
+        const zona = (v.zona || '').toLowerCase()
+        if (fCiudad === 'reynosa'   && !zona.includes('reynosa'))   return false
+        if (fCiudad === 'rio_bravo' && !zona.includes('rio bravo') && !zona.includes('río bravo')) return false
+      }
       if (search) {
         const s = search.toLowerCase()
         return v.tienda_nombre.toLowerCase().includes(s) || v.pendiente.toLowerCase().includes(s)
@@ -116,9 +160,18 @@ export default function VerificacionesPage() {
       en_proceso: items.filter(i => i.estatus === 'en_proceso').length,
       terminados: items.filter(i => i.estatus === 'terminado').length,
       total: items.length,
+      score: imaMap[nombre.toLowerCase()],
+      ciudad: items[0]?.zona || '',
       hasAlert: items.some(i => i.estatus === 'pendiente' && differenceInDays(new Date(), new Date(i.created_at)) > 5),
-    })).sort((a, b) => b.pendientes - a.pendientes)
-  }, [verificaciones, fEstatus, search])
+    })).sort((a, b) => {
+      // Primero por score IMA (menor = más urgente)
+      if (a.score && b.score) return a.score - b.score
+      if (a.score && !b.score) return -1
+      if (!a.score && b.score) return 1
+      // Luego por pendientes
+      return b.pendientes - a.pendientes
+    })
+  }, [verificaciones, fEstatus, fCiudad, search, imaMap])
 
   const stats = useMemo(() => ({
     total:      verificaciones.length,
@@ -127,6 +180,15 @@ export default function VerificacionesPage() {
     terminados: verificaciones.filter(v => v.estatus === 'terminado').length,
     tiendas:    new Set(verificaciones.map(v => v.tienda_nombre)).size,
   }), [verificaciones])
+
+  // Chart data — top tiendas con score bajo
+  const chartData = useMemo(() => {
+    return tiendasIma
+      .filter(t => t.score_ima)
+      .sort((a, b) => (a.score_ima || 0) - (b.score_ima || 0))
+      .slice(0, 15)
+      .map(t => ({ name: t.tienda_nombre, score: t.score_ima, fill: getScoreBg(t.score_ima) }))
+  }, [tiendasIma])
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -152,15 +214,11 @@ export default function VerificacionesPage() {
     setImporting(true)
     const inserts = previewRows.map(r => ({
       tienda_nombre: r.tienda_nombre || 'Sin tienda',
-      zona:          r.zona,
-      plaza:         r.plaza,
-      numero:        r.numero,
-      pendiente:     r.pendiente || 'Sin descripcion',
-      comentario:    r.comentario,
-      categoria:     r.categoria || (r.flex_field ? FLEX_CAT[r.flex_field.toUpperCase()] : null),
-      causa_raiz:    r.causa_raiz,
-      flex_field:    r.flex_field,
-      estatus:       'pendiente',
+      zona: r.zona, plaza: r.plaza, numero: r.numero,
+      pendiente: r.pendiente || 'Sin descripcion',
+      comentario: r.comentario,
+      categoria: r.categoria || (r.flex_field ? FLEX_CAT[r.flex_field.toUpperCase()] : null),
+      causa_raiz: r.causa_raiz, flex_field: r.flex_field, estatus: 'pendiente',
     }))
     const { error } = await supabase.from('verificaciones').insert(inserts)
     if (error) { toast.error('Error al importar') }
@@ -175,8 +233,18 @@ export default function VerificacionesPage() {
 
   async function updateResponsable(id: string, responsable: string) {
     await supabase.from('verificaciones').update({ responsable, updated_at: new Date().toISOString() }).eq('id', id)
-    setEditingId(null)
-    fetchData()
+    setEditingId(null); fetchData()
+  }
+
+  async function saveIma(tienda: string, score: string, cr?: string) {
+    const scoreNum = parseFloat(score)
+    if (isNaN(scoreNum)) { toast.error('Score invalido'); return }
+    await supabase.from('tiendas_ima').upsert({
+      tienda_nombre: tienda, score_ima: scoreNum, cr: cr || null,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'tienda_nombre' })
+    setEditingIma(null); fetchData()
+    toast.success('Score IMA guardado')
   }
 
   const fbtn = (active: boolean, onClick: () => void, label: string) => (
@@ -189,164 +257,4 @@ export default function VerificacionesPage() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-purple-500/20 rounded-xl flex items-center justify-center">
-            <ClipboardList size={18} className="text-purple-400" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Verificaciones</h1>
-            <p className="text-dark-400 text-sm">Auditorias y pendientes por tienda</p>
-          </div>
-        </div>
-        <label className="btn-primary flex items-center gap-2 cursor-pointer">
-          <Upload size={14} /> Importar Excel
-          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFile} />
-        </label>
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
-          { label: 'Tiendas',    val: stats.tiendas,    color: 'text-white'      },
-          { label: 'Total',      val: stats.total,      color: 'text-dark-200'   },
-          { label: 'Pendientes', val: stats.pendientes, color: 'text-yellow-400' },
-          { label: 'En Proceso', val: stats.en_proceso, color: 'text-blue-400'   },
-          { label: 'Terminados', val: stats.terminados, color: 'text-green-400'  },
-        ].map(({ label, val, color }) => (
-          <div key={label} className="card p-4 text-center">
-            <div className={`text-2xl font-black ${color}`}>{val}</div>
-            <div className="text-xs text-dark-500 mt-1 uppercase tracking-wide">{label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="card p-4 space-y-3">
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar tienda, pendiente..." className="input pl-9" />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {fbtn(fEstatus==='todos',      ()=>setFEstatus('todos'),      'Todos')}
-          {fbtn(fEstatus==='pendiente',  ()=>setFEstatus('pendiente'),  'Pendientes')}
-          {fbtn(fEstatus==='en_proceso', ()=>setFEstatus('en_proceso'), 'En Proceso')}
-          {fbtn(fEstatus==='terminado',  ()=>setFEstatus('terminado'),  'Terminados')}
-        </div>
-      </div>
-
-      {tiendas.length === 0 ? (
-        <div className="card p-16 text-center">
-          <ClipboardList size={32} className="text-dark-600 mx-auto mb-3" />
-          <div className="text-dark-300 font-medium">Sin verificaciones</div>
-          <div className="text-dark-500 text-sm mt-1">Importa un Excel para empezar</div>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {tiendas.map(t => {
-            const isExpanded = expanded === t.nombre
-            return (
-              <div key={t.nombre} className={`card overflow-hidden border ${t.hasAlert ? 'border-orange-500/30' : 'border-dark-700'}`}>
-                <button onClick={() => setExpanded(isExpanded ? null : t.nombre)}
-                  className="w-full px-4 py-4 flex items-center justify-between gap-3 hover:bg-dark-700/30 transition-all">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Building2 size={16} className="text-dark-400 flex-shrink-0" />
-                    <div className="text-left min-w-0">
-                      <div className="font-semibold text-dark-100 truncate">{t.nombre}</div>
-                      <div className="flex gap-3 mt-1 flex-wrap">
-                        {t.pendientes > 0 && <span className="text-xs text-yellow-400">{t.pendientes} pendientes</span>}
-                        {t.en_proceso > 0 && <span className="text-xs text-blue-400">{t.en_proceso} en proceso</span>}
-                        {t.terminados > 0 && <span className="text-xs text-green-400">{t.terminados} terminados</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    {t.hasAlert && <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-full"><AlertTriangle size={11}/> +5 dias</span>}
-                    <span className="text-xs text-dark-400 bg-dark-700 px-2 py-1 rounded-full">{t.total}</span>
-                    {isExpanded ? <ChevronUp size={16} className="text-dark-400"/> : <ChevronDown size={16} className="text-dark-400"/>}
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="border-t border-dark-700 divide-y divide-dark-700/50">
-                    {t.items.map(v => {
-                      const sc = SC[v.estatus]
-                      const dias = differenceInDays(new Date(), new Date(v.created_at))
-                      const isOld = dias > 5 && v.estatus === 'pendiente'
-                      return (
-                        <div key={v.id} className={`px-4 py-3 ${isOld ? 'bg-orange-500/5' : ''}`}>
-                          <div className="flex items-start gap-3">
-                            <button onClick={() => {
-                              const next = v.estatus === 'pendiente' ? 'en_proceso' : v.estatus === 'en_proceso' ? 'terminado' : 'pendiente'
-                              updateEstatus(v.id, next)
-                            }} className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all ${v.estatus === 'terminado' ? 'bg-green-500 border-green-500' : v.estatus === 'en_proceso' ? 'bg-blue-500/20 border-blue-400' : 'border-dark-500 hover:border-dark-300'}`}>
-                              {v.estatus === 'terminado' && <CheckCircle size={12} className="text-white"/>}
-                              {v.estatus === 'en_proceso' && <Clock size={12} className="text-blue-400"/>}
-                            </button>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`text-sm font-medium ${v.estatus === 'terminado' ? 'line-through text-dark-500' : 'text-dark-100'}`}>{v.pendiente}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full border ${sc.bg} ${sc.color} ${sc.border}`}>{sc.label}</span>
-                                {isOld && <span className="text-xs text-orange-400">{dias}d</span>}
-                              </div>
-                              {v.comentario && <div className="text-xs text-dark-400 mt-0.5">{v.comentario}</div>}
-                              <div className="flex gap-3 mt-1 flex-wrap">
-                                {v.flex_field && <span className="text-xs text-purple-400 font-mono">{v.flex_field}</span>}
-                                {v.categoria  && <span className="text-xs text-dark-500">{v.categoria}</span>}
-                              </div>
-                              {editingId === v.id ? (
-                                <input autoFocus defaultValue={v.responsable || ''}
-                                  onBlur={e => updateResponsable(v.id, e.target.value)}
-                                  onKeyDown={e => e.key === 'Enter' && updateResponsable(v.id, (e.target as HTMLInputElement).value)}
-                                  placeholder="Responsable" className="input text-xs py-1 mt-2 w-full max-w-xs" />
-                              ) : (
-                                <button onClick={() => setEditingId(v.id)} className="text-xs text-dark-500 hover:text-dark-300 mt-1.5">
-                                  {v.responsable || 'Asignar responsable'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {showImport && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
-            <div className="px-6 py-4 border-b border-dark-700 flex items-center justify-between flex-shrink-0">
-              <div>
-                <h3 className="font-bold text-white">Vista previa - {previewRows.length} registros</h3>
-                <p className="text-xs text-dark-400 mt-0.5">Revisa antes de confirmar</p>
-              </div>
-              <button onClick={() => { setShowImport(false); setPreviewRows([]) }} className="text-dark-400 hover:text-white"><X size={20}/></button>
-            </div>
-            <div className="overflow-y-auto flex-1 p-4 space-y-2">
-              {previewRows.slice(0, 50).map((r, i) => (
-                <div key={i} className="bg-dark-900 rounded-lg p-3 flex items-start gap-3">
-                  <span className="text-xs text-dark-600 font-mono w-6 flex-shrink-0">{i+1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-dark-100 truncate">{r.tienda_nombre}</span>
-                      {r.flex_field && <span className="text-xs text-purple-400 font-mono">{r.flex_field}</span>}
-                    </div>
-                    <div className="text-xs text-dark-400 mt-0.5 truncate">{r.pendiente}</div>
-                    {r.comentario && <div className="text-xs text-dark-500 truncate">{r.comentario}</div>}
-                  </div>
-                </div>
-              ))}
-              {previewRows.length > 50 && <div className="text-center text-xs text-dark-500 py-2">... y {previewRows.length - 50} mas</div>}
-            </div>
-            <div className="px-6 py-4 border-t border-dark-700 flex gap-3 flex-shrink-0">
-              <button onClick={() => { setShowImport(false); setPreviewRows([]) }} className="btn-ghost flex-1">Cancelar</button>
-              <button onClick={confirmImport} disabled={importing || previewRows.length === 0} className="btn-primary flex-1 disabled:opacity-50">
-                {importing ? 'Importando...' : `Confirmar ${previewRows.length} registros`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+          <div className="w-9 h-9 bg-purple-500/20 rounded-xl
