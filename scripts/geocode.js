@@ -29,13 +29,12 @@ async function geocode(address) {
 async function run() {
   const workbook = XLSX.readFile("tiendas_134_limpias_para_mapa.xlsx")
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
-
   const rows = XLSX.utils.sheet_to_json(sheet)
 
   const resultado = []
 
   for (const row of rows) {
-    const direccion = `${row.DIRECCION}, Tamaulipas, Mexico`
+    const direccion = `${row.Direccion}, ${row.Ciudad}, Tamaulipas, Mexico`
 
     console.log("Buscando:", direccion)
 
@@ -43,9 +42,9 @@ async function run() {
 
     resultado.push({
       cr: row.CR,
-      nombre: row.TIENDA,
-      ciudad: row.LOC,
-      direccion: row.DIRECCION,
+      nombre: row.Nombre,
+      ciudad: row.Ciudad,
+      direccion: row.Direccion,
       lat: coords?.lat || null,
       lng: coords?.lng || null
     })
@@ -58,7 +57,7 @@ async function run() {
     JSON.stringify(resultado, null, 2)
   )
 
-  console.log("Listo")
+  console.log("LISTO")
 }
 
 run()
