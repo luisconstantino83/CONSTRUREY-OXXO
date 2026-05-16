@@ -6,7 +6,7 @@ async function sleep(ms) {
 }
 
 async function geocode(address) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`
 
   const res = await fetch(url, {
     headers: {
@@ -34,7 +34,7 @@ async function run() {
   const resultado = []
 
   for (const row of rows) {
-    const direccion = `${row.Direccion}, ${row.Ciudad}, Tamaulipas, Mexico`
+    const direccion = `${row.Nombre} OXXO, ${row.Direccion}, ${row.Ciudad}, Tamaulipas, Mexico`
 
     console.log("Buscando:", direccion)
 
@@ -43,10 +43,12 @@ async function run() {
     resultado.push({
       cr: row.CR,
       nombre: row.Nombre,
+      sector: row.Sector,
       ciudad: row.Ciudad,
       direccion: row.Direccion,
       lat: coords?.lat || null,
-      lng: coords?.lng || null
+      lng: coords?.lng || null,
+      googleMaps: row["Google Maps"] || ""
     })
 
     await sleep(1200)
