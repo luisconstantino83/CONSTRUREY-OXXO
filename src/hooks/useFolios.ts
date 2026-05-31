@@ -57,9 +57,9 @@ export function useFolios() {
     abiertos:       folios.filter(f => new Date(f.fecha_vencimiento).getTime() > now).length,
     cerrados:       totalCerrados,
     vencidos:       folios.filter(f => new Date(f.fecha_vencimiento).getTime() < now).length,
-    altas:          folios.filter(f => f.prioridad === "ALTA").length,
-    medias:         folios.filter(f => f.prioridad === "MEDIA").length,
-    bajas:          folios.filter(f => f.prioridad === "BAJA").length,
+    altas:          folios.filter(f => f.prioridad === "ALTA"  && new Date(f.fecha_vencimiento).getTime() > now).length,
+    medias:         folios.filter(f => f.prioridad === "MEDIA" && new Date(f.fecha_vencimiento).getTime() > now).length,
+    bajas:          folios.filter(f => f.prioridad === "BAJA"  && new Date(f.fecha_vencimiento).getTime() > now).length,
     proximosVencer: folios.filter(f => {
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
       return secs > 0 && secs < 21600
