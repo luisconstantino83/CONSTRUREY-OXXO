@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID!
+const SUPABASE_URL = process.env.SUPABASE_URL!
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
 function formatTiempo(secs: number): string {
   if (secs <= 0) return "⚠ VENCIDO"
@@ -15,29 +17,17 @@ export async function POST() {
   try {
     const now = Date.now()
 
-    const SUPABASE_URL = process.env.SUPABASE_URL
-    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/folios?select=*&estatus=neq.Cerrado&order=fecha_vencimiento.asc&limit=200`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+      }
+    )
 
-    console.log("SUPABASE_URL:", SUPABASE_URL?.slice(0, 40))
-    console.log("SUPABASE_KEY:", SUPABASE_KEY?.slice(0, 20))
-
-    if (!SUPABASE_URL || !SUPABASE_KEY) {
-      return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 })
-    }
-
-    const fetchUrl = `${SUPABASE_URL}/rest/v1/folios?select=*&order=fecha_vencimiento.asc&limit=100`
-    console.log("Fetching:", fetchUrl)
-
-    const res = await fetch(fetchUrl, {
-      headers: {
-        apikey: SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-      },
-    })
-
-    console.log("Response status:", res.status)
     const folios = await res.json()
-    console.log("Folios count:", Array.isArray(folios) ? folios.length : "NOT ARRAY", typeof folios)
 
     if (!Array.isArray(folios)) {
       return NextResponse.json({ error: "No data", raw: folios }, { status: 500 })
@@ -53,12 +43,13 @@ export async function POST() {
       timeZone: "America/Matamoros"
     })
 
-    const activos = folios.filter((f: any) => f.estatus !== "Cerrado")
-
-    const importantes = activos.filter((f: any) => {
+    // Filtrar: ALTA siempre, MEDIA solo si vence en menos de 24h, no BAJA
+    const importantes = folios.filter((f: any) => {
       if (f.prioridad === "BAJA") return false
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-      return secs <= 108000
+      if (f.prioridad === "ALTA" && secs <= 86400) return true
+      if (f.prioridad === "MEDIA" && secs <= 86400) return true
+      return false
     }).sort((a: any, b: any) =>
       new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime()
     )
@@ -66,22 +57,40 @@ export async function POST() {
     const lines = [
       `🚨 *REPORTE FOLIOS OXXO*`,
       `📅 ${fecha} — ${hora}`,
-      `📊 Activos: ${activos.length} | Urgentes: ${importantes.length}`,
+      `📊 Activos: ${folios.length} | Urgentes <24h: ${importantes.length}`,
       ``,
     ]
 
     if (importantes.length === 0) {
       lines.push("✅ Sin folios urgentes en este momento.")
     } else {
-      importantes.forEach((f: any, i: number) => {
-        const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-        const tiempo = formatTiempo(secs)
-        const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-        const ciudad = f.ciudad === "Rio Bravo" ? "🔵 RB" : "⚪ Rey"
-        lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre} ${ciudad}`)
-        lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
-        lines.push(`   ⏱ ${tiempo}`)
-      })
+      const reynosa = importantes.filter((f: any) => f.ciudad !== "Rio Bravo")
+      const rioBravo = importantes.filter((f: any) => f.ciudad === "Rio Bravo")
+
+      if (reynosa.length > 0) {
+        lines.push(`⚪ *REYNOSA*`)
+        reynosa.forEach((f: any, i: number) => {
+          const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
+          const tiempo = formatTiempo(secs)
+          const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
+          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre}`)
+          lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
+          lines.push(`   ⏱ ${tiempo}`)
+        })
+        lines.push("")
+      }
+
+      if (rioBravo.length > 0) {
+        lines.push(`🔵 *RIO BRAVO*`)
+        rioBravo.forEach((f: any, i: number) => {
+          const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
+          const tiempo = formatTiempo(secs)
+          const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
+          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre}`)
+          lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
+          lines.push(`   ⏱ ${tiempo}`)
+        })
+      }
     }
 
     lines.push(``)
@@ -108,18 +117,7 @@ export async function POST() {
       return NextResponse.json({ error: tgData.description }, { status: 500 })
     }
 
-    return NextResponse.json({ 
-      ok: true, 
-      sent: importantes.length,
-      total: folios.length,
-      activos: activos.length,
-      debug: importantes.slice(0,3).map((f:any) => ({
-        numero: f.numero_folio,
-        estatus: f.estatus,
-        prioridad: f.prioridad,
-        vence: f.fecha_vencimiento
-      }))
-    })
+    return NextResponse.json({ ok: true, sent: importantes.length, total: folios.length })
 
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
