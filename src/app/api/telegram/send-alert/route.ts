@@ -6,7 +6,6 @@ const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
 function formatTiempo(secs: number): string {
-  if (secs <= 0) return "⚠ VENCIDO"
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
   if (h > 24) return `${Math.floor(h/24)}d ${h%24}h`
@@ -18,7 +17,7 @@ export async function POST() {
     const now = Date.now()
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/folios?select=*&estatus=neq.Cerrado&order=fecha_vencimiento.asc&limit=200`,
+      `${SUPABASE_URL}/rest/v1/folios?select=*&estatus=eq.Abierto&order=fecha_vencimiento.asc&limit=200`,
       {
         headers: {
           apikey: SUPABASE_KEY,
@@ -43,21 +42,26 @@ export async function POST() {
       timeZone: "America/Matamoros"
     })
 
-    // Filtrar: ALTA siempre, MEDIA solo si vence en menos de 24h, no BAJA
+    // Solo ALTA y MEDIA que vencen en menos de 24h, excluyendo BAJA y vencidos
     const importantes = folios.filter((f: any) => {
       if (f.prioridad === "BAJA") return false
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-      if (f.prioridad === "ALTA" && secs <= 86400) return true
-      if (f.prioridad === "MEDIA" && secs <= 86400) return true
-      return false
+      if (secs <= 0) return false
+      if (secs > 86400) return false
+      return true
     }).sort((a: any, b: any) =>
       new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime()
     )
 
+    const fecha2 = nowReyosa.toLocaleDateString("es-MX", {
+      weekday: "long", day: "numeric", month: "long",
+      timeZone: "America/Matamoros"
+    })
+
     const lines = [
       `🚨 *REPORTE FOLIOS OXXO*`,
       `📅 ${fecha} — ${hora}`,
-      `📊 Activos: ${folios.length} | Urgentes <24h: ${importantes.length}`,
+      `📊 Abiertos: ${folios.length} | Urgentes <24h: ${importantes.length}`,
       ``,
     ]
 
@@ -73,9 +77,9 @@ export async function POST() {
           const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
           const tiempo = formatTiempo(secs)
           const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre}`)
-          lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
-          lines.push(`   ⏱ ${tiempo}`)
+          const falla = (f.falla || f.motivo || "Sin desc").slice(0, 35)
+          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre.replace("OXXO ","").slice(0,20)} ⏱${tiempo}`)
+          lines.push(`   ↳ ${falla}`)
         })
         lines.push("")
       }
@@ -86,9 +90,9 @@ export async function POST() {
           const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
           const tiempo = formatTiempo(secs)
           const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre}`)
-          lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
-          lines.push(`   ⏱ ${tiempo}`)
+          const falla = (f.falla || f.motivo || "Sin desc").slice(0, 35)
+          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre.replace("OXXO ","").slice(0,20)} ⏱${tiempo}`)
+          lines.push(`   ↳ ${falla}`)
         })
       }
     }
@@ -97,6 +101,24 @@ export async function POST() {
     lines.push(`_CONSTRUREY © Control OXXO_`)
 
     const message = lines.join("\n")
+
+    if (message.length > 4000) {
+      const short = lines.slice(0, 30).join("\n") + "\n\n_...y más folios_"
+      const tgRes2 = await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: short,
+            parse_mode: "Markdown",
+          }),
+        }
+      )
+      const d2 = await tgRes2.json()
+      return NextResponse.json({ ok: d2.ok, sent: importantes.length, total: folios.length })
+    }
 
     const tgRes = await fetch(
       `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
