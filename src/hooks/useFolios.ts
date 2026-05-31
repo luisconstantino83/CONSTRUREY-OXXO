@@ -57,7 +57,7 @@ export function useFolios() {
 
   const stats: DashboardStats = {
     total:          folios.length + totalCerrados,
-    abiertos:       folios.length,
+    abiertos:       folios.filter(f => new Date(f.fecha_vencimiento).getTime() > now).length,
     cerrados:       totalCerrados,
     vencidos:       folios.filter(f => new Date(f.fecha_vencimiento).getTime() < now).length,
     altas:          folios.filter(f => f.prioridad === "ALTA").length,
