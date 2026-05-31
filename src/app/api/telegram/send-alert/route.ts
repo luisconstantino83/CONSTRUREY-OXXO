@@ -16,7 +16,7 @@ export async function POST() {
     const now = Date.now()
 
     const SUPABASE_URL = process.env.SUPABASE_URL
-    const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY
+    const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY
 
     console.log("SUPABASE_URL:", SUPABASE_URL?.slice(0, 40))
     console.log("SUPABASE_KEY:", SUPABASE_KEY?.slice(0, 20))
