@@ -10,10 +10,12 @@ export function isVencidoNow(f: Folio): boolean {
 
 export function useFolios() {
   const [folios, setFolios] = useState<Folio[]>([])
+  const [totalCerrados, setTotalCerrados] = useState(0)
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
   const fetchFolios = useCallback(async () => {
+    // Solo activos — rapido
     const { data } = await supabase
       .from("folios")
       .select("*")
@@ -22,14 +24,20 @@ export function useFolios() {
       .order("fecha_vencimiento", { ascending: true })
       .limit(150)
     if (data) setFolios(data as Folio[])
+
+    // Conteo de cerrados — solo un numero
+    const { count } = await supabase
+      .from("folios")
+      .select("*", { count: "exact", head: true })
+      .eq("estatus", "Cerrado")
+    setTotalCerrados(count || 0)
+
     setLoading(false)
   }, [supabase])
 
   // Auto-refresh cada 30 segundos
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchFolios()
-    }, 30000)
+    const interval = setInterval(() => { fetchFolios() }, 30000)
     return () => clearInterval(interval)
   }, [fetchFolios])
 
@@ -48,9 +56,9 @@ export function useFolios() {
   const now = Date.now()
 
   const stats: DashboardStats = {
-    total:          folios.length,
-    abiertos:       folios.filter(f => f.estatus !== "Cerrado").length,
-    cerrados:       folios.filter(f => f.estatus === "Cerrado").length,
+    total:          folios.length + totalCerrados,
+    abiertos:       folios.length,
+    cerrados:       totalCerrados,
     vencidos:       folios.filter(f => new Date(f.fecha_vencimiento).getTime() < now).length,
     altas:          folios.filter(f => f.prioridad === "ALTA").length,
     medias:         folios.filter(f => f.prioridad === "MEDIA").length,
