@@ -226,8 +226,10 @@ export default function FoliosPage() {
                       <span className={`badge-${f.prioridad.toLowerCase()}`}>{f.prioridad}</span>
                       <span className={`badge-${estatusReal.toLowerCase()}`}>{estatusReal}</span>
                     </div>
-                    <div className="font-semibold text-dark-100 text-sm truncate">{f.tienda_nombre}</div>
-                    <div className="text-xs text-dark-400 mt-0.5 truncate">{f.falla || f.motivo}</div>
+                    <div className="font-semibold text-white text-sm truncate">{f.tienda_nombre}</div>
+                    <div className="mt-0.5 truncate" style={{color:"#FACC15",fontSize:"15px",fontWeight:700,lineHeight:1.35}}>
+                      {f.falla || f.motivo}
+                    </div>
                     <div className="text-xs text-dark-500 mt-0.5">{f.ciudad}{f.categoria && ` · ${f.categoria}`}</div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -309,46 +311,4 @@ export default function FoliosPage() {
                   </div>
                 ))}
               </div>
-              {showDetail.estatus !== "Cerrado" && (
-                <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-2">Tiempo Restante</div>
-                  <Countdown fechaVencimiento={showDetail.fecha_vencimiento} estatus={showDetail.estatus} prioridad={showDetail.prioridad} showBar />
-                </div>
-              )}
-              {showDetail.falla_especifica && (
-                <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Falla Especifica</div>
-                  <div className="text-sm text-dark-100">{showDetail.falla_especifica}</div>
-                </div>
-              )}
-              {showDetail.correo_origen && (
-                <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Correo Original</div>
-                  <pre className="text-xs text-dark-300 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">{showDetail.correo_origen}</pre>
-                </div>
-              )}
-              {showDetail.comentarios_cierre && (
-                <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Comentarios Cierre</div>
-                  <div className="text-sm text-dark-200">{showDetail.comentarios_cierre}</div>
-                </div>
-              )}
-              <div className="flex flex-col gap-2 mt-2">
-                {showDetail.estatus !== "Cerrado" && (
-                  <button onClick={() => closeFolio(showDetail)} className="btn-primary w-full">
-                    Cerrar Folio Manualmente
-                  </button>
-                )}
-                {isAdmin && (
-                  <button onClick={() => deleteFolio(showDetail)} className="btn-danger w-full flex items-center justify-center gap-2">
-                    <Trash2 size={14}/> Eliminar Folio
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+              {showDetail.estatus !==
