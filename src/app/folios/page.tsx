@@ -17,15 +17,15 @@ export default function FoliosPage() {
   const supabaseRef = useRef(createClient())
   const supabase = supabaseRef.current
 
-  const [search, setSearch]         = useState("")
-  const [fCiudad, setFCiudad]       = useState("Todas")
+  const [search, setSearch] = useState("")
+  const [fCiudad, setFCiudad] = useState("Todas")
   const [fPrioridad, setFPrioridad] = useState("Todas")
-  const [fEstatus, setFEstatus]     = useState("Abierto")
+  const [fEstatus, setFEstatus] = useState("Abierto")
   const [showImport, setShowImport] = useState(false)
   const [showDetail, setShowDetail] = useState<Folio | null>(null)
-  const [emailText, setEmailText]   = useState("")
+  const [emailText, setEmailText] = useState("")
   const [importLoading, setImportLoading] = useState(false)
-  const [cerrados, setCerrados]     = useState<Folio[]>([])
+  const [cerrados, setCerrados] = useState<Folio[]>([])
   const [loadingCerrados, setLoadingCerrados] = useState(false)
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function FoliosPage() {
     const e = getEstatusReal(f)
     if (e === "Cerrado") return "border-l-dark-500"
     if (e === "Vencido") return "border-l-red-500"
-    if (f.prioridad === "ALTA")  return "border-l-orange-400"
+    if (f.prioridad === "ALTA") return "border-l-orange-400"
     if (f.prioridad === "MEDIA") return "border-l-yellow-400"
     return "border-l-blue-400"
   }
@@ -91,21 +91,30 @@ export default function FoliosPage() {
     try {
       const parsed = parseCorreo(emailText)
       await supabase.from("correos_importados").insert({
-        tipo: parsed.tipo, contenido: emailText, folio_detectado: parsed.ticket, procesado: false,
+        tipo: parsed.tipo,
+        contenido: emailText,
+        folio_detectado: parsed.ticket,
+        procesado: false,
       })
       if (parsed.tipo === "cierre") {
         const { data: existing } = await supabase
-          .from("folios").select("id,fecha_vencimiento,estatus").eq("numero_folio", parsed.ticket!).single()
+          .from("folios")
+          .select("id,fecha_vencimiento,estatus")
+          .eq("numero_folio", parsed.ticket!)
+          .single()
         if (existing) {
           const fechaCierre = parsed.fecha_correo ? new Date(parsed.fecha_correo) : new Date()
           const vencimiento = new Date(existing.fecha_vencimiento)
           const cerradoATiempo = fechaCierre <= vencimiento
           await supabase.from("folios").update({
-            estatus: "Cerrado", fecha_cierre: fechaCierre.toISOString(),
+            estatus: "Cerrado",
+            fecha_cierre: fechaCierre.toISOString(),
             comentarios_cierre: parsed.comentarios_cierre,
             nombre_persona_cierra: parsed.nombre_persona_cierra,
             cerrado_a_tiempo: cerradoATiempo,
-            tiempo_vencido_mins: cerradoATiempo ? 0 : Math.floor((fechaCierre.getTime() - vencimiento.getTime()) / 60000),
+            tiempo_vencido_mins: cerradoATiempo
+              ? 0
+              : Math.floor((fechaCierre.getTime() - vencimiento.getTime()) / 60000),
             updated_at: new Date().toISOString(),
           }).eq("id", existing.id)
           toast.success(`Folio #${parsed.ticket} cerrado ${cerradoATiempo ? "✅ a tiempo" : "⚠ con retraso"}`)
@@ -113,8 +122,16 @@ export default function FoliosPage() {
           toast.warning(`Folio #${parsed.ticket} no encontrado.`)
         }
       } else if (parsed.tipo === "apertura" && parsed.ticket) {
-        const { data: dup } = await supabase.from("folios").select("id").eq("numero_folio", parsed.ticket).single()
-        if (dup) { toast.warning(`El folio #${parsed.ticket} ya existe.`); setImportLoading(false); return }
+        const { data: dup } = await supabase
+          .from("folios")
+          .select("id")
+          .eq("numero_folio", parsed.ticket)
+          .single()
+        if (dup) {
+          toast.warning(`El folio #${parsed.ticket} ya existe.`)
+          setImportLoading(false)
+          return
+        }
         const fechaLlegada = parsed.fecha_correo ? new Date(parsed.fecha_correo) : new Date()
         const fechaVencimiento = calcularFechaVencimiento(parsed.prioridad || "MEDIA", fechaLlegada)
         await supabase.from("folios").insert({
@@ -138,7 +155,9 @@ export default function FoliosPage() {
       } else {
         toast.error("No se pudo detectar el tipo de correo")
       }
-      setEmailText(""); setShowImport(false); refetch()
+      setEmailText("")
+      setShowImport(false)
+      refetch()
     } catch {
       toast.error("Error al procesar el correo")
     }
@@ -150,24 +169,36 @@ export default function FoliosPage() {
     const vencimiento = new Date(folio.fecha_vencimiento)
     const cerradoATiempo = now <= vencimiento
     await supabase.from("folios").update({
-      estatus: "Cerrado", fecha_cierre: now.toISOString(),
+      estatus: "Cerrado",
+      fecha_cierre: now.toISOString(),
       cerrado_a_tiempo: cerradoATiempo,
-      tiempo_vencido_mins: cerradoATiempo ? 0 : Math.floor((now.getTime() - vencimiento.getTime()) / 60000),
+      tiempo_vencido_mins: cerradoATiempo
+        ? 0
+        : Math.floor((now.getTime() - vencimiento.getTime()) / 60000),
       updated_at: now.toISOString(),
     }).eq("id", folio.id)
     toast.success(`Folio #${folio.numero_folio} cerrado`)
-    setShowDetail(null); refetch()
+    setShowDetail(null)
+    refetch()
   }
 
   async function deleteFolio(folio: Folio) {
     if (!confirm(`Eliminar folio #${folio.numero_folio}?`)) return
     await supabase.from("folios").delete().eq("id", folio.id)
     toast.success(`Folio #${folio.numero_folio} eliminado`)
-    setShowDetail(null); refetch()
+    setShowDetail(null)
+    refetch()
   }
 
   const fbtn = (active: boolean, onClick: () => void, label: string) => (
-    <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${active ? "bg-brand-green/20 text-brand-green border border-brand-green/30" : "bg-dark-800 text-dark-400 border border-dark-700 hover:text-dark-200"}`}>
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+        active
+          ? "bg-brand-green/20 text-brand-green border border-brand-green/30"
+          : "bg-dark-800 text-dark-400 border border-dark-700 hover:text-dark-200"
+      }`}
+    >
       {label}
     </button>
   )
@@ -189,8 +220,12 @@ export default function FoliosPage() {
       <div className="card p-4 space-y-3">
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por folio, tienda, falla..." className="input pl-9" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por folio, tienda, falla..."
+            className="input pl-9"
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -217,8 +252,11 @@ export default function FoliosPage() {
           {filtered.map(f => {
             const estatusReal = getEstatusReal(f)
             return (
-              <div key={f.id} onClick={() => setShowDetail(f)}
-                className={`card card-hover p-4 border-l-2 ${getBorderLeft(f)}`}>
+              <div
+                key={f.id}
+                onClick={() => setShowDetail(f)}
+                className={`card card-hover p-4 border-l-2 ${getBorderLeft(f)}`}
+              >
                 <div className="flex items-start gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -227,21 +265,34 @@ export default function FoliosPage() {
                       <span className={`badge-${estatusReal.toLowerCase()}`}>{estatusReal}</span>
                     </div>
                     <div className="font-semibold text-white text-sm truncate">{f.tienda_nombre}</div>
-                    <div className="mt-0.5 truncate" style={{color:"#FACC15",fontSize:"15px",fontWeight:700,lineHeight:1.35}}>
+                    <div
+                      className="mt-0.5 truncate"
+                      style={{ color: "#FACC15", fontSize: "15px", fontWeight: 700, lineHeight: 1.35 }}
+                    >
                       {f.falla || f.motivo}
                     </div>
-                    <div className="text-xs text-dark-500 mt-0.5">{f.ciudad}{f.categoria && ` · ${f.categoria}`}</div>
+                    <div className="text-xs text-dark-500 mt-0.5">
+                      {f.ciudad}{f.categoria && ` · ${f.categoria}`}
+                    </div>
                   </div>
                   <div className="text-right flex-shrink-0">
                     {estatusReal !== "Cerrado" && (
-                      <Countdown fechaVencimiento={f.fecha_vencimiento} estatus={f.estatus} prioridad={f.prioridad} showBar />
+                      <Countdown
+                        fechaVencimiento={f.fecha_vencimiento}
+                        estatus={f.estatus}
+                        prioridad={f.prioridad}
+                        showBar
+                      />
                     )}
                     {f.fecha_importacion && (
-                      <div className="text-xs text-dark-500 mt-1">Llego: {format(new Date(f.fecha_importacion), "dd/MM HH:mm")}</div>
+                      <div className="text-xs text-dark-500 mt-1">
+                        Llego: {format(new Date(f.fecha_importacion), "dd/MM HH:mm")}
+                      </div>
                     )}
                     {f.fecha_cierre && (
                       <div className="text-xs text-dark-500 mt-1">
-                        {f.cerrado_a_tiempo ? "✅" : "⚠"} {format(new Date(f.fecha_cierre), "dd/MM HH:mm")}
+                        {f.cerrado_a_tiempo ? "✅" : "⚠"}{" "}
+                        {format(new Date(f.fecha_cierre), "dd/MM HH:mm")}
                       </div>
                     )}
                   </div>
@@ -262,14 +313,26 @@ export default function FoliosPage() {
           <div className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-lg p-6 animate-slide-up">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-white">Importar Correo OXXO</h3>
-              <button onClick={() => setShowImport(false)} className="text-dark-400 hover:text-white"><X size={20}/></button>
+              <button onClick={() => setShowImport(false)} className="text-dark-400 hover:text-white">
+                <X size={20} />
+              </button>
             </div>
-            <textarea value={emailText} onChange={e => setEmailText(e.target.value)}
-              rows={10} className="input resize-none font-mono text-xs leading-relaxed"
-              placeholder="Pega el correo de OXXO aqui..." />
+            <textarea
+              value={emailText}
+              onChange={e => setEmailText(e.target.value)}
+              rows={10}
+              className="input resize-none font-mono text-xs leading-relaxed"
+              placeholder="Pega el correo de OXXO aqui..."
+            />
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowImport(false)} className="btn-ghost flex-1">Cancelar</button>
-              <button onClick={handleImport} disabled={importLoading || !emailText.trim()} className="btn-primary flex-1 disabled:opacity-50">
+              <button onClick={() => setShowImport(false)} className="btn-ghost flex-1">
+                Cancelar
+              </button>
+              <button
+                onClick={handleImport}
+                disabled={importLoading || !emailText.trim()}
+                className="btn-primary flex-1 disabled:opacity-50"
+              >
                 {importLoading ? "Procesando..." : "Procesar Correo"}
               </button>
             </div>
@@ -285,30 +348,88 @@ export default function FoliosPage() {
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm text-dark-400">#{showDetail.numero_folio}</span>
                   <span className={`badge-${showDetail.prioridad.toLowerCase()}`}>{showDetail.prioridad}</span>
-                  <span className={`badge-${getEstatusReal(showDetail).toLowerCase()}`}>{getEstatusReal(showDetail)}</span>
+                  <span className={`badge-${getEstatusReal(showDetail).toLowerCase()}`}>
+                    {getEstatusReal(showDetail)}
+                  </span>
                 </div>
                 <h3 className="text-lg font-bold text-white mt-0.5">{showDetail.tienda_nombre}</h3>
               </div>
-              <button onClick={() => setShowDetail(null)} className="text-dark-400 hover:text-white"><X size={20}/></button>
+              <button onClick={() => setShowDetail(null)} className="text-dark-400 hover:text-white">
+                <X size={20} />
+              </button>
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ["Ciudad",        showDetail.ciudad],
-                  ["Categoria",     showDetail.categoria],
-                  ["Motivo",        showDetail.motivo],
+                  ["Ciudad", showDetail.ciudad],
+                  ["Categoria", showDetail.categoria],
+                  ["Motivo", showDetail.motivo],
                   ["Representante", showDetail.representante_propietario],
-                  ["Prestador",     showDetail.prestador_servicio],
-                  ["Tecnico",       showDetail.tecnico_asignado],
-                  ["Llegada",       showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion),"dd/MM/yyyy HH:mm") : null],
-                  ["Vencimiento",   format(new Date(showDetail.fecha_vencimiento),"dd/MM/yyyy HH:mm")],
-                  ["Cerrado",       showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre),"dd/MM/yyyy HH:mm") : null],
-                  ["A tiempo",      showDetail.cerrado_a_tiempo === true ? "✅ Si" : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : null],
-                ].filter(([,v]) => v).map(([k,v]) => (
-                  <div key={k as string} className="bg-dark-900 rounded-lg p-3">
-                    <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">{k}</div>
-                    <div className="text-sm text-dark-100">{v}</div>
-                  </div>
-                ))}
+                  ["Prestador", showDetail.prestador_servicio],
+                  ["Tecnico", showDetail.tecnico_asignado],
+                  ["Llegada", showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion), "dd/MM/yyyy HH:mm") : null],
+                  ["Vencimiento", format(new Date(showDetail.fecha_vencimiento), "dd/MM/yyyy HH:mm")],
+                  ["Cerrado", showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre), "dd/MM/yyyy HH:mm") : null],
+                  ["A tiempo", showDetail.cerrado_a_tiempo === true ? "✅ Si" : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : null],
+                ]
+                  .filter(([, v]) => v)
+                  .map(([k, v]) => (
+                    <div key={k as string} className="bg-dark-900 rounded-lg p-3">
+                      <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">{k}</div>
+                      <div className="text-sm text-dark-100">{v}</div>
+                    </div>
+                  ))}
               </div>
-              {showDetail.estatus !==
+              {showDetail.estatus !== "Cerrado" && (
+                <div className="bg-dark-900 rounded-lg p-3">
+                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-2">Tiempo Restante</div>
+                  <Countdown
+                    fechaVencimiento={showDetail.fecha_vencimiento}
+                    estatus={showDetail.estatus}
+                    prioridad={showDetail.prioridad}
+                    showBar
+                  />
+                </div>
+              )}
+              {showDetail.falla_especifica && (
+                <div className="bg-dark-900 rounded-lg p-3">
+                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Falla Especifica</div>
+                  <div className="text-sm text-dark-100">{showDetail.falla_especifica}</div>
+                </div>
+              )}
+              {showDetail.correo_origen && (
+                <div className="bg-dark-900 rounded-lg p-3">
+                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Correo Original</div>
+                  <pre className="text-xs text-dark-300 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">
+                    {showDetail.correo_origen}
+                  </pre>
+                </div>
+              )}
+              {showDetail.comentarios_cierre && (
+                <div className="bg-dark-900 rounded-lg p-3">
+                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Comentarios Cierre</div>
+                  <div className="text-sm text-dark-200">{showDetail.comentarios_cierre}</div>
+                </div>
+              )}
+              <div className="flex flex-col gap-2 mt-2">
+                {showDetail.estatus !== "Cerrado" && (
+                  <button onClick={() => closeFolio(showDetail)} className="btn-primary w-full">
+                    Cerrar Folio Manualmente
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => deleteFolio(showDetail)}
+                    className="btn-danger w-full flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={14} /> Eliminar Folio
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
