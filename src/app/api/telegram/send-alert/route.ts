@@ -2,8 +2,6 @@ import { NextResponse } from "next/server"
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID!
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 function formatTiempo(secs: number): string {
   if (secs <= 0) return "⚠ VENCIDO"
@@ -17,24 +15,34 @@ export async function POST() {
   try {
     const now = Date.now()
 
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/folios?select=*&order=fecha_vencimiento.asc&limit=100`,
-      {
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-      }
-    )
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-    const folios = await res.json()
+    console.log("SUPABASE_URL:", SUPABASE_URL?.slice(0, 40))
+    console.log("SUPABASE_KEY:", SUPABASE_KEY?.slice(0, 20))
 
-    if (!Array.isArray(folios)) {
-      return NextResponse.json({ error: "No data" }, { status: 500 })
-      console.log("Folios recibidos:", folios.length, "Primero:", JSON.stringify(folios[0]))
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      return NextResponse.json({ error: "Missing Supabase env vars" }, { status: 500 })
     }
 
-    // Hora Reynosa
+    const fetchUrl = `${SUPABASE_URL}/rest/v1/folios?select=*&order=fecha_vencimiento.asc&limit=100`
+    console.log("Fetching:", fetchUrl)
+
+    const res = await fetch(fetchUrl, {
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+    })
+
+    console.log("Response status:", res.status)
+    const folios = await res.json()
+    console.log("Folios count:", Array.isArray(folios) ? folios.length : "NOT ARRAY", typeof folios)
+
+    if (!Array.isArray(folios)) {
+      return NextResponse.json({ error: "No data", raw: folios }, { status: 500 })
+    }
+
     const nowReyosa = new Date(now)
     const fecha = nowReyosa.toLocaleDateString("es-MX", {
       weekday: "long", day: "numeric", month: "long",
@@ -45,8 +53,9 @@ export async function POST() {
       timeZone: "America/Matamoros"
     })
 
-    // Solo ALTA y MEDIA que vencen en menos de 24h
-    const importantes = folios.filter(f => {
+    const activos = folios.filter((f: any) => f.estatus !== "Cerrado")
+
+    const importantes = activos.filter((f: any) => {
       if (f.prioridad === "BAJA") return false
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
       return secs <= 108000
@@ -57,7 +66,7 @@ export async function POST() {
     const lines = [
       `🚨 *REPORTE FOLIOS OXXO*`,
       `📅 ${fecha} — ${hora}`,
-      `📊 Activos: ${folios.length} | Urgentes <24h: ${importantes.length}`,
+      `📊 Activos: ${activos.length} | Urgentes: ${importantes.length}`,
       ``,
     ]
 
@@ -99,7 +108,18 @@ export async function POST() {
       return NextResponse.json({ error: tgData.description }, { status: 500 })
     }
 
-  return NextResponse.json({ ok: true, sent: importantes.length, total: folios.length, debug: folios.slice(0,2).map((f:any) => ({numero: f.numero_folio, estatus: f.estatus, vence: f.fecha_vencimiento, prioridad: f.prioridad})) })
+    return NextResponse.json({ 
+      ok: true, 
+      sent: importantes.length,
+      total: folios.length,
+      activos: activos.length,
+      debug: importantes.slice(0,3).map((f:any) => ({
+        numero: f.numero_folio,
+        estatus: f.estatus,
+        prioridad: f.prioridad,
+        vence: f.fecha_vencimiento
+      }))
+    })
 
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
