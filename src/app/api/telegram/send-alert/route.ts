@@ -18,7 +18,7 @@ export async function POST() {
     const now = Date.now()
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/folios?estatus=in.(Abierto,Vencido)&order=fecha_vencimiento.asc&limit=100`,
+      `${SUPABASE_URL}/rest/v1/folios?select=*&order=fecha_vencimiento.asc&limit=100`,
       {
         headers: {
           apikey: SUPABASE_KEY,
