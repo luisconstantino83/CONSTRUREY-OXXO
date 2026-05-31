@@ -31,6 +31,7 @@ export async function POST() {
 
     if (!Array.isArray(folios)) {
       return NextResponse.json({ error: "No data" }, { status: 500 })
+      console.log("Folios recibidos:", folios.length, "Primero:", JSON.stringify(folios[0]))
     }
 
     // Hora Reynosa
