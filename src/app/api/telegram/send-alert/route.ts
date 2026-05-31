@@ -48,7 +48,7 @@ export async function POST() {
     const importantes = folios.filter(f => {
       if (f.prioridad === "BAJA") return false
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-      return secs <= 86400
+      return secs <= 108000
     }).sort((a: any, b: any) =>
       new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime()
     )
