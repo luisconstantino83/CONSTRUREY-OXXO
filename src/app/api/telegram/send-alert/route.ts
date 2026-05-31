@@ -6,7 +6,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 function formatTiempo(secs: number): string {
-  if (secs <= 0) return "VENCIDO"
+  if (secs <= 0) return "⚠ VENCIDO"
   const h = Math.floor(secs / 3600)
   const m = Math.floor((secs % 3600) / 60)
   if (h > 24) return `${Math.floor(h/24)}d ${h%24}h`
@@ -33,68 +33,45 @@ export async function POST() {
       return NextResponse.json({ error: "No data" }, { status: 500 })
     }
 
-    // Hora Reynosa UTC-6
-    const fechaReyosa = new Date(now - 6 * 60 * 60 * 1000)
-    const fecha = fechaReyosa.toLocaleDateString("es-MX", {
-      weekday: "long", day: "numeric", month: "long", timeZone: "UTC"
+    // Hora Reynosa
+    const nowReyosa = new Date(now)
+    const fecha = nowReyosa.toLocaleDateString("es-MX", {
+      weekday: "long", day: "numeric", month: "long",
+      timeZone: "America/Matamoros"
     })
-    const hora = fechaReyosa.toLocaleTimeString("es-MX", {
-      hour: "2-digit", minute: "2-digit", timeZone: "UTC"
+    const hora = nowReyosa.toLocaleTimeString("es-MX", {
+      hour: "2-digit", minute: "2-digit",
+      timeZone: "America/Matamoros"
     })
 
+    // Solo ALTA y MEDIA que vencen en menos de 24h
     const importantes = folios.filter(f => {
+      if (f.prioridad === "BAJA") return false
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-      if (f.prioridad === "ALTA") return true
-      if (f.prioridad === "MEDIA" && secs < 86400) return true
-      return false
-    })
+      return secs <= 86400
+    }).sort((a: any, b: any) =>
+      new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime()
+    )
 
     const lines = [
-      `🚨 *ACTUALIZACIÓN FOLIOS OXXO*`,
-      `📅 ${fecha} — ${hora} (Reynosa)`,
-      ``,
-      `📊 Activos: ${folios.length} | Urgentes: ${importantes.length}`,
+      `🚨 *REPORTE FOLIOS OXXO*`,
+      `📅 ${fecha} — ${hora}`,
+      `📊 Activos: ${folios.length} | Urgentes <24h: ${importantes.length}`,
       ``,
     ]
 
     if (importantes.length === 0) {
-      lines.push("✅ No hay folios urgentes en este momento.")
+      lines.push("✅ Sin folios urgentes en este momento.")
     } else {
-      const menos24 = importantes.filter(f => {
+      importantes.forEach((f: any, i: number) => {
         const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-        return secs < 86400
+        const tiempo = formatTiempo(secs)
+        const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
+        const ciudad = f.ciudad === "Rio Bravo" ? "🔵 RB" : "⚪ Rey"
+        lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre} ${ciudad}`)
+        lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
+        lines.push(`   ⏱ ${tiempo}`)
       })
-      const resto = importantes.filter(f => {
-        const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-        return secs >= 86400
-      })
-
-      if (menos24.length > 0) {
-        lines.push(`🔴 *VENCEN EN MENOS DE 24H*`)
-        menos24.forEach((f, i) => {
-          const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-          const tiempo = formatTiempo(secs)
-          const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-          const ciudad = f.ciudad === "Rio Bravo" ? "🔵 RB" : "⚪ Rey"
-          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre} ${ciudad}`)
-          lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
-          lines.push(`   ⏱ ${tiempo}`)
-        })
-        lines.push("")
-      }
-
-      if (resto.length > 0) {
-        lines.push(`🟢 *RESTO DE FOLIOS ACTIVOS*`)
-        resto.forEach((f, i) => {
-          const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-          const tiempo = formatTiempo(secs)
-          const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-          const ciudad = f.ciudad === "Rio Bravo" ? "🔵 RB" : "⚪ Rey"
-          lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre} ${ciudad}`)
-          lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
-          lines.push(`   ⏱ ${tiempo}`)
-        })
-      }
     }
 
     lines.push(``)
