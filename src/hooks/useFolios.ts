@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { Folio, DashboardStats } from "@/types"
 
@@ -12,10 +12,10 @@ export function useFolios() {
   const [folios, setFolios] = useState<Folio[]>([])
   const [totalCerrados, setTotalCerrados] = useState(0)
   const [loading, setLoading] = useState(true)
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
 
   const fetchFolios = useCallback(async () => {
-    // Solo activos — rapido
     const { data } = await supabase
       .from("folios")
       .select("*")
@@ -25,7 +25,6 @@ export function useFolios() {
       .limit(150)
     if (data) setFolios(data as Folio[])
 
-    // Conteo de cerrados — solo un numero
     const { count } = await supabase
       .from("folios")
       .select("*", { count: "exact", head: true })
@@ -35,13 +34,11 @@ export function useFolios() {
     setLoading(false)
   }, [supabase])
 
-  // Auto-refresh cada 30 segundos
   useEffect(() => {
     const interval = setInterval(() => { fetchFolios() }, 30000)
     return () => clearInterval(interval)
   }, [fetchFolios])
 
-  // Realtime — una sola suscripcion
   useEffect(() => {
     fetchFolios()
     const channel = supabase
