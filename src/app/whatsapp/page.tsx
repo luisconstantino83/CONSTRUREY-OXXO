@@ -3,7 +3,7 @@ import { useRef, useEffect, useState } from "react"
 import { useFolios } from "@/hooks/useFolios"
 import { formatTiempoRestante } from "@/lib/parser"
 import { format } from "date-fns"
-import { Download, Copy, RefreshCw } from "lucide-react"
+import { Download, Copy, RefreshCw, Send } from "lucide-react"
 import { toast } from "sonner"
 
 function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -29,7 +29,7 @@ const COLS=[{l:"PRIORIDAD",w:105},{l:"TICKET",w:100},{l:"TIENDA",w:210},{l:"CIUD
 
 function drawTable(
   ctx: CanvasRenderingContext2D,
-  folios: ReturnType<typeof Array.prototype.filter>,
+  folios: any[],
   y: number,
   W: number,
   PAD: number,
@@ -38,8 +38,6 @@ function drawTable(
   cw: number[]
 ) {
   const ROW_H = 52, COL_H = 34, TITLE_H = 44
-
-  // Section title
   ctx.fillStyle = titleColor
   ctx.fillRect(0, y, W, TITLE_H)
   ctx.fillStyle = "#ffffff"
@@ -47,8 +45,6 @@ function drawTable(
   ctx.textAlign = "left"
   ctx.fillText(title, PAD, y + 28)
   y += TITLE_H
-
-  // Col headers
   ctx.fillStyle = "#1e293b"
   ctx.fillRect(0, y, W, COL_H)
   let cx2 = PAD
@@ -60,7 +56,6 @@ function drawTable(
     cx2 += cw[i]
   })
   y += COL_H
-
   folios.forEach((f: any, ri: number) => {
     const secs = Math.floor((new Date(f.fecha_vencimiento).getTime() - Date.now()) / 1000)
     const rs = getRowStyle(f.prioridad, secs, f.ciudad)
@@ -82,7 +77,6 @@ function drawTable(
     ctx.fillText(f.numero_folio, cx + 5, cy + 4); cx += cw[1]
     ctx.fillStyle = "#1e293b"; ctx.font = "12px Arial"
     ctx.fillText(trunc(f.tienda_nombre, 26), cx + 5, cy + 4); cx += cw[2]
-    // Ciudad con color
     ctx.fillStyle = f.ciudad === "Rio Bravo" ? "#2563eb" : "#475569"
     ctx.font = "bold 11px Arial"
     ctx.fillText(f.ciudad, cx + 5, cy + 4); cx += cw[3]
@@ -96,7 +90,6 @@ function drawTable(
     ctx.fillText(tl, cx + 5, cy + 4)
     y += ROW_H
   })
-
   return y
 }
 
@@ -104,6 +97,7 @@ export default function WhatsAppPage() {
   const { folios } = useFolios()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [tick, setTick] = useState(0)
+  const [sendingTelegram, setSendingTelegram] = useState(false)
 
   const activos = [...folios]
     .filter(f => f.estatus !== "Cerrado" && new Date(f.fecha_vencimiento).getTime() > Date.now())
@@ -125,20 +119,15 @@ export default function WhatsAppPage() {
     const DPR = 2, W = 1100
     const HEADER_H = 120, PAD = 26, FOOTER_H = 48, GAP = 20
     const ROW_H = 52, COL_H = 34, TITLE_H = 44
-
     const H = HEADER_H +
       (urgentes.length > 0 ? TITLE_H + COL_H + urgentes.length * ROW_H + GAP : 0) +
       (resto.length > 0 ? TITLE_H + COL_H + resto.length * ROW_H + GAP : 0) +
       FOOTER_H + PAD * 2
-
     canvas.width = W * DPR; canvas.height = H * DPR
     canvas.style.width = W + "px"; canvas.style.height = H + "px"
     const ctx = canvas.getContext("2d")!
     ctx.scale(DPR, DPR)
-
     ctx.fillStyle = "#f4f6f8"; ctx.fillRect(0, 0, W, H)
-
-    // Header
     const g = ctx.createLinearGradient(0, 0, W, 0)
     g.addColorStop(0, "#111827"); g.addColorStop(1, "#1e3a2f")
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, HEADER_H)
@@ -151,23 +140,17 @@ export default function WhatsAppPage() {
     ctx.font = "13px Arial"; ctx.fillStyle = "rgba(255,255,255,.75)"
     ctx.fillText(`${now.toLocaleDateString("es-MX", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — ${now.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })}`, PAD + 88, 68)
     ctx.fillText(`Activos: ${activos.length}  •  Vencen hoy (<24h): ${urgentes.length}  •  Alta: ${activos.filter(f => f.prioridad === "ALTA").length}`, PAD + 88, 88)
-
     const TW = W - PAD * 2, cs = COLS.reduce((a, c) => a + c.w, 0)
     const cw = COLS.map(c => Math.round(c.w / cs * TW))
-
     let y = HEADER_H + GAP
-
     if (urgentes.length > 0) {
       y = drawTable(ctx, urgentes, y, W, PAD, `🔴 VENCEN EN MENOS DE 24 HORAS — ${urgentes.length} folios`, "#7f1d1d", cw)
       y += GAP
     }
-
     if (resto.length > 0) {
       y = drawTable(ctx, resto, y, W, PAD, `🟢 RESTO DE FOLIOS ACTIVOS — ${resto.length} folios`, "#1e3a5f", cw)
       y += GAP
     }
-
-    // Footer
     ctx.fillStyle = "#0f172a"; ctx.fillRect(0, y, W, FOOTER_H)
     ctx.fillStyle = "#64748b"; ctx.font = "11px Arial"; ctx.textAlign = "center"
     ctx.fillText("CONSTRUREY  •  Control Operativo OXXO  •  Servicio a Clientes", W / 2, y + 30)
@@ -187,6 +170,19 @@ export default function WhatsAppPage() {
       link.click()
       toast.success("Imagen descargada")
     }, 200)
+  }
+
+  async function sendTelegram() {
+    setSendingTelegram(true)
+    try {
+      const res = await fetch("/api/telegram/send-alert", { method: "POST" })
+      const data = await res.json()
+      if (data.ok) toast.success(`Alerta enviada a Telegram — ${data.sent} folios`)
+      else toast.error("Error: " + data.error)
+    } catch {
+      toast.error("Error de conexion")
+    }
+    setSendingTelegram(false)
   }
 
   function copyText() {
@@ -242,6 +238,9 @@ export default function WhatsAppPage() {
           </button>
           <button onClick={download} className="btn-primary flex items-center gap-2">
             <Download size={14} /> Descargar PNG
+          </button>
+          <button onClick={sendTelegram} disabled={sendingTelegram} className="btn-ghost flex items-center gap-2 disabled:opacity-50">
+            <Send size={14} /> {sendingTelegram ? "Enviando..." : "Enviar Telegram"}
           </button>
         </div>
       </div>
