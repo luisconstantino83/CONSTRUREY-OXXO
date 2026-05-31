@@ -8,7 +8,7 @@ import {
 
 const KPI_CONFIG = [
   { key: 'total',          label: 'Total',         color: 'text-dark-200',  bg: 'bg-dark-700/50'   },
-  { key: 'abiertos',       label: 'Activos',       color: 'text-green-400', bg: 'bg-green-500/10'  },
+  { key: 'abiertos',       label: 'Abiertos',      color: 'text-green-400', bg: 'bg-green-500/10'  },
   { key: 'vencidos',       label: 'Vencidos',      color: 'text-red-400',   bg: 'bg-red-500/10'    },
   { key: 'cerrados',       label: 'Cerrados',      color: 'text-dark-300',  bg: 'bg-dark-700/50'   },
   { key: 'altas',          label: 'Alta Prior.',   color: 'text-orange-400',bg: 'bg-orange-500/10' },
