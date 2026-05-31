@@ -33,24 +33,25 @@ export async function POST() {
       return NextResponse.json({ error: "No data" }, { status: 500 })
     }
 
+    // Hora Reynosa UTC-6
+    const fechaReyosa = new Date(now - 6 * 60 * 60 * 1000)
+    const fecha = fechaReyosa.toLocaleDateString("es-MX", {
+      weekday: "long", day: "numeric", month: "long", timeZone: "UTC"
+    })
+    const hora = fechaReyosa.toLocaleTimeString("es-MX", {
+      hour: "2-digit", minute: "2-digit", timeZone: "UTC"
+    })
+
     const importantes = folios.filter(f => {
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
-      if (secs <= 0) return false
       if (f.prioridad === "ALTA") return true
       if (f.prioridad === "MEDIA" && secs < 86400) return true
       return false
     })
 
-    const fecha = new Date().toLocaleDateString("es-MX", {
-      weekday: "long", day: "numeric", month: "long"
-    })
-    const hora = new Date().toLocaleTimeString("es-MX", {
-      hour: "2-digit", minute: "2-digit"
-    })
-
     const lines = [
       `🚨 *ACTUALIZACIÓN FOLIOS OXXO*`,
-      `📅 ${fecha} — ${hora}`,
+      `📅 ${fecha} — ${hora} (Reynosa)`,
       ``,
       `📊 Activos: ${folios.length} | Urgentes: ${importantes.length}`,
       ``,
@@ -74,7 +75,7 @@ export async function POST() {
           const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
           const tiempo = formatTiempo(secs)
           const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-          const ciudad = f.ciudad === "Rio Bravo" ? "🔵" : "⚪"
+          const ciudad = f.ciudad === "Rio Bravo" ? "🔵 RB" : "⚪ Rey"
           lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre} ${ciudad}`)
           lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
           lines.push(`   ⏱ ${tiempo}`)
@@ -88,7 +89,7 @@ export async function POST() {
           const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
           const tiempo = formatTiempo(secs)
           const e = f.prioridad === "ALTA" ? "🔴" : "🟡"
-          const ciudad = f.ciudad === "Rio Bravo" ? "🔵" : "⚪"
+          const ciudad = f.ciudad === "Rio Bravo" ? "🔵 RB" : "⚪ Rey"
           lines.push(`${i+1}. ${e} #${f.numero_folio} ${f.tienda_nombre} ${ciudad}`)
           lines.push(`   ↳ ${f.falla || f.motivo || "Sin descripcion"}`)
           lines.push(`   ⏱ ${tiempo}`)
