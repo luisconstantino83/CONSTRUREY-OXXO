@@ -99,7 +99,7 @@ export async function POST() {
       return NextResponse.json({ error: tgData.description }, { status: 500 })
     }
 
-    return NextResponse.json({ ok: true, sent: importantes.length })
+  return NextResponse.json({ ok: true, sent: importantes.length, total: folios.length, debug: folios.slice(0,2).map((f:any) => ({numero: f.numero_folio, estatus: f.estatus, vence: f.fecha_vencimiento, prioridad: f.prioridad})) })
 
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
