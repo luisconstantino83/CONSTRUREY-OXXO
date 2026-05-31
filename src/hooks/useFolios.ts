@@ -9,7 +9,7 @@ export function isVencidoNow(f: Folio): boolean {
 }
 
 export function useFolios() {
-  const [folios, setFolios]   = useState<Folio[]>([])
+  const [folios, setFolios] = useState<Folio[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
 
@@ -17,23 +17,23 @@ export function useFolios() {
     const { data } = await supabase
       .from("folios")
       .select("*")
+      .not("estatus", "eq", "Cerrado")
+      .not("numero_folio", "like", "TEMP-%")
       .order("fecha_vencimiento", { ascending: true })
+      .limit(150)
     if (data) setFolios(data as Folio[])
     setLoading(false)
   }, [supabase])
 
+  // Auto-refresh cada 30 segundos
   useEffect(() => {
-    const tick = setInterval(async () => {
-      const now = new Date().toISOString()
-      await supabase
-        .from("folios")
-        .update({ estatus: "Vencido", updated_at: now })
-        .in("estatus", ["Abierto"])
-        .lt("fecha_vencimiento", now)
-    }, 60000)
-    return () => clearInterval(tick)
-  }, [supabase])
+    const interval = setInterval(() => {
+      fetchFolios()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [fetchFolios])
 
+  // Realtime — una sola suscripcion
   useEffect(() => {
     fetchFolios()
     const channel = supabase
@@ -51,12 +51,11 @@ export function useFolios() {
     total:          folios.length,
     abiertos:       folios.filter(f => f.estatus !== "Cerrado").length,
     cerrados:       folios.filter(f => f.estatus === "Cerrado").length,
-    vencidos:       folios.filter(f => f.estatus !== "Cerrado" && new Date(f.fecha_vencimiento).getTime() < now).length,
-    altas:          folios.filter(f => f.prioridad === "ALTA"  && f.estatus !== "Cerrado").length,
-    medias:         folios.filter(f => f.prioridad === "MEDIA" && f.estatus !== "Cerrado").length,
-    bajas:          folios.filter(f => f.prioridad === "BAJA"  && f.estatus !== "Cerrado").length,
+    vencidos:       folios.filter(f => new Date(f.fecha_vencimiento).getTime() < now).length,
+    altas:          folios.filter(f => f.prioridad === "ALTA").length,
+    medias:         folios.filter(f => f.prioridad === "MEDIA").length,
+    bajas:          folios.filter(f => f.prioridad === "BAJA").length,
     proximosVencer: folios.filter(f => {
-      if (f.estatus === "Cerrado") return false
       const secs = (new Date(f.fecha_vencimiento).getTime() - now) / 1000
       return secs > 0 && secs < 21600
     }).length,
