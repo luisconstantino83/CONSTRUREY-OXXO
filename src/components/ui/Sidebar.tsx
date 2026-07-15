@@ -25,6 +25,7 @@ const NAV = [
   { href: '/reporte-semanal',icon: BarChart2,       label: 'Reporte Semanal'},
   { href: '/operador',       icon: Wrench,          label: 'Modo Operador'  },
   { href: '/automatizacion', icon: Mail,            label: 'Outlook Auto'   },
+  { href: '/sincronizacion', icon: Wifi, label: 'Sincronizacion' },
 
 ]
 
