@@ -10,6 +10,7 @@ import {
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Usuario } from '@/types'
+import { ..., Wifi } from "lucide-react"
 
 const NAV = [
   { href: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard'      },
@@ -25,6 +26,7 @@ const NAV = [
   { href: '/reporte-semanal',icon: BarChart2,       label: 'Reporte Semanal'},
   { href: '/operador',       icon: Wrench,          label: 'Modo Operador'  },
   { href: '/automatizacion', icon: Mail,            label: 'Outlook Auto'   },
+  { href: "/sincronizacion", label: "Sincronización", icon: Wifi },
 ]
 
 export function Sidebar({ user }: { user: Usuario | null }) {
