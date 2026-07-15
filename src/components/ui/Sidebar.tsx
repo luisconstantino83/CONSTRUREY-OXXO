@@ -10,7 +10,6 @@ import {
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Usuario } from '@/types'
-import { LayoutDashboard, Wifi } from "lucide-react"
 
 const NAV = [
   { href: '/dashboard',      icon: LayoutDashboard, label: 'Dashboard'      },
