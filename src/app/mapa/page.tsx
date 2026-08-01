@@ -296,7 +296,7 @@ export default function MapaPage() {
       </div>
 
       {/* Leyenda con parpadeo */}
-      <div className="card p-3 flex gap-4 text-xs flex-wrap items-center">
+      <div c   lassName="card p-3 flex gap-4 text-xs flex-wrap items-center">
         <span className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-full bg-red-500 inline-block" style={{ opacity: tick % 2 === 0 ? 1 : 0.3, transition: "opacity 0.3s" }}/>
           Vencido (parpadea)
@@ -336,7 +336,7 @@ export default function MapaPage() {
               )
 
               return (
-                <Marker key={`${t.cr}-${tick}`} position={[t.lat, t.lng]} icon={icon}>
+                <Marker key={t.cr} position={[t.lat, t.lng]} icon={icon}>
                   <Popup>
                     <div style={{ minWidth: "230px", fontFamily: "sans-serif" }}>
                       <div style={{ fontWeight: "bold", fontSize: "13px", marginBottom: "2px" }}>{t.nombre}</div>
