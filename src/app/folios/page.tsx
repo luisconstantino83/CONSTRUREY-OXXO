@@ -77,7 +77,6 @@ export default function FoliosPage() {
 
   const sourceList = fEstatus === "Cerrado" ? cerrados : folios
 
-  // Lotes disponibles dinámicamente
   const lotes = useMemo(() => {
     const set = new Set<string>()
     folios.forEach(f => { if ((f as any).lote_importacion) set.add((f as any).lote_importacion) })
@@ -89,7 +88,6 @@ export default function FoliosPage() {
       .filter(f => {
         if (fCiudad !== "Todas" && f.ciudad !== fCiudad) return false
         if (fPrioridad !== "Todas" && f.prioridad !== fPrioridad) return false
-
         if (fEstatus !== "Todos" && fEstatus !== "Cerrado") {
           const c = getClasificacion(f)
           if (fEstatus === "Abierto") return c === "EN_TIEMPO"
@@ -97,9 +95,7 @@ export default function FoliosPage() {
           if (fEstatus === "Histórico") return c === "VENCIDO_HISTORICO"
           if (fEstatus === "Vencido") return c === "VENCIDO_ACTIVO" || c === "VENCIDO_HISTORICO"
         }
-
         if (fLote !== "Todos" && (f as any).lote_importacion !== fLote) return false
-
         if (search) {
           const s = search.toLowerCase()
           return (
@@ -110,7 +106,15 @@ export default function FoliosPage() {
         }
         return true
       })
-      .sort((a, b) => new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime())
+      .sort((a, b) => {
+        const ca = getClasificacion(a)
+        const cb = getClasificacion(b)
+        // Históricos primero, del más antiguo al más reciente
+        if (ca === "VENCIDO_HISTORICO" && cb !== "VENCIDO_HISTORICO") return -1
+        if (ca !== "VENCIDO_HISTORICO" && cb === "VENCIDO_HISTORICO") return 1
+        // Dentro del mismo grupo, del más antiguo al más reciente
+        return new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime()
+      })
   }, [sourceList, fCiudad, fPrioridad, fEstatus, fLote, search])
 
   async function handleImport() {
@@ -217,11 +221,9 @@ export default function FoliosPage() {
     </button>
   )
 
-  // Contadores para los botones de filtro
   const countAbierto = folios.filter(f => getClasificacion(f) === "EN_TIEMPO").length
   const countVencidoActivo = folios.filter(f => getClasificacion(f) === "VENCIDO_ACTIVO").length
   const countHistorico = folios.filter(f => getClasificacion(f) === "VENCIDO_HISTORICO").length
-
   const isLoading = loading || (fEstatus === "Cerrado" && loadingCerrados)
 
   return (
@@ -246,7 +248,6 @@ export default function FoliosPage() {
             className="input pl-9"
           />
         </div>
-
         <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-dark-500 uppercase tracking-wide">Ciudad</span>
@@ -260,10 +261,10 @@ export default function FoliosPage() {
             <span className="text-xs text-dark-500 uppercase tracking-wide">Estatus</span>
             {fbtn(fEstatus === "Abierto", () => setFEstatus("Abierto"), `Abiertos (${countAbierto})`)}
             {fbtn(fEstatus === "Vencido Activo", () => setFEstatus("Vencido Activo"),
-              `Vencidos ${countVencidoActivo}`,
+              `Vencidos (${countVencidoActivo})`,
               fEstatus === "Vencido Activo" ? "bg-red-500/20 text-red-400 border border-red-500/30" : undefined)}
             {fbtn(fEstatus === "Histórico", () => setFEstatus("Histórico"),
-              `Históricos ${countHistorico}`,
+              `Históricos (${countHistorico})`,
               fEstatus === "Histórico" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : undefined)}
             {fbtn(fEstatus === "Cerrado", () => setFEstatus("Cerrado"), "Cerrados")}
             {fbtn(fEstatus === "Todos", () => setFEstatus("Todos"), "Todos")}
