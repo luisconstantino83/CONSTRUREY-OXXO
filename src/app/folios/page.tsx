@@ -6,9 +6,21 @@ import { Countdown } from "@/components/ui/Countdown"
 import { createClient } from "@/lib/supabase/client"
 import { parseCorreo, calcularFechaVencimiento } from "@/lib/parser"
 import { toast } from "sonner"
-import { Search, Mail, X, Trash2 } from "lucide-react"
+import { Search, Mail, X, Trash2, History } from "lucide-react"
 import type { Folio } from "@/types"
 import { format } from "date-fns"
+
+function getClasificacion(f: Folio): "EN_TIEMPO" | "VENCIDO_ACTIVO" | "VENCIDO_HISTORICO" | "CERRADO" {
+  if (f.estatus === "Cerrado") return "CERRADO"
+  const ahora = new Date()
+  const venc = new Date(f.fecha_vencimiento)
+  if (venc > ahora) return "EN_TIEMPO"
+  const ahoraLocal = new Date(ahora.toLocaleString("en-US", { timeZone: "America/Matamoros" }))
+  const vencLocal = new Date(venc.toLocaleString("en-US", { timeZone: "America/Matamoros" }))
+  const mismoMes = vencLocal.getMonth() === ahoraLocal.getMonth() &&
+                   vencLocal.getFullYear() === ahoraLocal.getFullYear()
+  return mismoMes ? "VENCIDO_ACTIVO" : "VENCIDO_HISTORICO"
+}
 
 export default function FoliosPage() {
   const { folios, loading, refetch } = useFolios()
@@ -21,6 +33,7 @@ export default function FoliosPage() {
   const [fCiudad, setFCiudad] = useState("Todas")
   const [fPrioridad, setFPrioridad] = useState("Todas")
   const [fEstatus, setFEstatus] = useState("Abierto")
+  const [fLote, setFLote] = useState("Todos")
   const [showImport, setShowImport] = useState(false)
   const [showDetail, setShowDetail] = useState<Folio | null>(null)
   const [emailText, setEmailText] = useState("")
@@ -36,7 +49,7 @@ export default function FoliosPage() {
         .select("*")
         .eq("estatus", "Cerrado")
         .order("fecha_cierre", { ascending: false })
-        .limit(100)
+        .limit(200)
         .then(({ data }) => {
           if (data) setCerrados(data as Folio[])
           setLoadingCerrados(false)
@@ -46,15 +59,17 @@ export default function FoliosPage() {
 
   function getEstatusReal(f: Folio): string {
     if (f.estatus === "Cerrado") return "Cerrado"
-    const secs = (new Date(f.fecha_vencimiento).getTime() - Date.now()) / 1000
-    if (secs <= 0) return "Vencido"
+    const c = getClasificacion(f)
+    if (c === "VENCIDO_ACTIVO") return "Vencido Activo"
+    if (c === "VENCIDO_HISTORICO") return "Histórico"
     return "Abierto"
   }
 
   function getBorderLeft(f: Folio): string {
-    const e = getEstatusReal(f)
-    if (e === "Cerrado") return "border-l-dark-500"
-    if (e === "Vencido") return "border-l-red-500"
+    const c = getClasificacion(f)
+    if (c === "CERRADO") return "border-l-dark-500"
+    if (c === "VENCIDO_HISTORICO") return "border-l-purple-500"
+    if (c === "VENCIDO_ACTIVO") return "border-l-red-500"
     if (f.prioridad === "ALTA") return "border-l-orange-400"
     if (f.prioridad === "MEDIA") return "border-l-yellow-400"
     return "border-l-blue-400"
@@ -62,16 +77,29 @@ export default function FoliosPage() {
 
   const sourceList = fEstatus === "Cerrado" ? cerrados : folios
 
+  // Lotes disponibles dinámicamente
+  const lotes = useMemo(() => {
+    const set = new Set<string>()
+    folios.forEach(f => { if ((f as any).lote_importacion) set.add((f as any).lote_importacion) })
+    return Array.from(set).sort()
+  }, [folios])
+
   const filtered = useMemo(() => {
     return [...sourceList]
       .filter(f => {
         if (fCiudad !== "Todas" && f.ciudad !== fCiudad) return false
         if (fPrioridad !== "Todas" && f.prioridad !== fPrioridad) return false
+
         if (fEstatus !== "Todos" && fEstatus !== "Cerrado") {
-          const e = getEstatusReal(f)
-          if (fEstatus === "Vencido") return e === "Vencido"
-          if (fEstatus === "Abierto") return e === "Abierto"
+          const c = getClasificacion(f)
+          if (fEstatus === "Abierto") return c === "EN_TIEMPO"
+          if (fEstatus === "Vencido Activo") return c === "VENCIDO_ACTIVO"
+          if (fEstatus === "Histórico") return c === "VENCIDO_HISTORICO"
+          if (fEstatus === "Vencido") return c === "VENCIDO_ACTIVO" || c === "VENCIDO_HISTORICO"
         }
+
+        if (fLote !== "Todos" && (f as any).lote_importacion !== fLote) return false
+
         if (search) {
           const s = search.toLowerCase()
           return (
@@ -83,7 +111,7 @@ export default function FoliosPage() {
         return true
       })
       .sort((a, b) => new Date(a.fecha_vencimiento).getTime() - new Date(b.fecha_vencimiento).getTime())
-  }, [sourceList, fCiudad, fPrioridad, fEstatus, search])
+  }, [sourceList, fCiudad, fPrioridad, fEstatus, fLote, search])
 
   async function handleImport() {
     if (!emailText.trim()) return
@@ -110,11 +138,7 @@ export default function FoliosPage() {
             estatus: "Cerrado",
             fecha_cierre: fechaCierre.toISOString(),
             comentarios_cierre: parsed.comentarios_cierre,
-            nombre_persona_cierra: parsed.nombre_persona_cierra,
             cerrado_a_tiempo: cerradoATiempo,
-            tiempo_vencido_mins: cerradoATiempo
-              ? 0
-              : Math.floor((fechaCierre.getTime() - vencimiento.getTime()) / 60000),
             updated_at: new Date().toISOString(),
           }).eq("id", existing.id)
           toast.success(`Folio #${parsed.ticket} cerrado ${cerradoATiempo ? "✅ a tiempo" : "⚠ con retraso"}`)
@@ -123,10 +147,7 @@ export default function FoliosPage() {
         }
       } else if (parsed.tipo === "apertura" && parsed.ticket) {
         const { data: dup } = await supabase
-          .from("folios")
-          .select("id")
-          .eq("numero_folio", parsed.ticket)
-          .single()
+          .from("folios").select("id").eq("numero_folio", parsed.ticket).single()
         if (dup) {
           toast.warning(`El folio #${parsed.ticket} ya existe.`)
           setImportLoading(false)
@@ -136,16 +157,12 @@ export default function FoliosPage() {
         const fechaVencimiento = calcularFechaVencimiento(parsed.prioridad || "MEDIA", fechaLlegada)
         await supabase.from("folios").insert({
           numero_folio: parsed.ticket,
-          id_tienda: parsed.id_tienda,
           tienda_nombre: parsed.tienda_nombre || "Sin nombre",
           ciudad: parsed.ciudad || "Reynosa",
           prioridad: parsed.prioridad || "MEDIA",
           categoria: parsed.categoria,
           motivo: parsed.motivo,
           falla: parsed.motivo,
-          falla_especifica: parsed.falla_especifica,
-          representante_propietario: parsed.representante_propietario,
-          prestador_servicio: parsed.prestador_servicio,
           fecha_vencimiento: fechaVencimiento.toISOString(),
           fecha_importacion: fechaLlegada.toISOString(),
           estatus: "Abierto",
@@ -172,9 +189,6 @@ export default function FoliosPage() {
       estatus: "Cerrado",
       fecha_cierre: now.toISOString(),
       cerrado_a_tiempo: cerradoATiempo,
-      tiempo_vencido_mins: cerradoATiempo
-        ? 0
-        : Math.floor((now.getTime() - vencimiento.getTime()) / 60000),
       updated_at: now.toISOString(),
     }).eq("id", folio.id)
     toast.success(`Folio #${folio.numero_folio} cerrado`)
@@ -190,18 +204,23 @@ export default function FoliosPage() {
     refetch()
   }
 
-  const fbtn = (active: boolean, onClick: () => void, label: string) => (
+  const fbtn = (active: boolean, onClick: () => void, label: string, color?: string) => (
     <button
       onClick={onClick}
       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
         active
-          ? "bg-brand-green/20 text-brand-green border border-brand-green/30"
+          ? color || "bg-brand-green/20 text-brand-green border border-brand-green/30"
           : "bg-dark-800 text-dark-400 border border-dark-700 hover:text-dark-200"
       }`}
     >
       {label}
     </button>
   )
+
+  // Contadores para los botones de filtro
+  const countAbierto = folios.filter(f => getClasificacion(f) === "EN_TIEMPO").length
+  const countVencidoActivo = folios.filter(f => getClasificacion(f) === "VENCIDO_ACTIVO").length
+  const countHistorico = folios.filter(f => getClasificacion(f) === "VENCIDO_HISTORICO").length
 
   const isLoading = loading || (fEstatus === "Cerrado" && loadingCerrados)
 
@@ -227,7 +246,8 @@ export default function FoliosPage() {
             className="input pl-9"
           />
         </div>
-        <div className="flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap gap-3">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-dark-500 uppercase tracking-wide">Ciudad</span>
             {["Todas", "Reynosa", "Rio Bravo"].map(v => fbtn(fCiudad === v, () => setFCiudad(v), v))}
@@ -238,8 +258,29 @@ export default function FoliosPage() {
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs text-dark-500 uppercase tracking-wide">Estatus</span>
-            {["Todos", "Abierto", "Vencido", "Cerrado"].map(v => fbtn(fEstatus === v, () => setFEstatus(v), v))}
+            {fbtn(fEstatus === "Abierto", () => setFEstatus("Abierto"), `Abiertos (${countAbierto})`)}
+            {fbtn(fEstatus === "Vencido Activo", () => setFEstatus("Vencido Activo"),
+              `Vencidos ${countVencidoActivo}`,
+              fEstatus === "Vencido Activo" ? "bg-red-500/20 text-red-400 border border-red-500/30" : undefined)}
+            {fbtn(fEstatus === "Histórico", () => setFEstatus("Histórico"),
+              `Históricos ${countHistorico}`,
+              fEstatus === "Histórico" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : undefined)}
+            {fbtn(fEstatus === "Cerrado", () => setFEstatus("Cerrado"), "Cerrados")}
+            {fbtn(fEstatus === "Todos", () => setFEstatus("Todos"), "Todos")}
           </div>
+          {lotes.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs text-dark-500 uppercase tracking-wide flex items-center gap-1">
+                <History size={11} /> Lote
+              </span>
+              {fbtn(fLote === "Todos", () => setFLote("Todos"), "Todos")}
+              {lotes.map(l => fbtn(
+                fLote === l,
+                () => setFLote(l),
+                l.replace("folios_", "").replace(/_/g, " ")
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -250,7 +291,8 @@ export default function FoliosPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map(f => {
-            const estatusReal = getEstatusReal(f)
+            const c = getClasificacion(f)
+            const estatusLabel = getEstatusReal(f)
             return (
               <div
                 key={f.id}
@@ -262,7 +304,17 @@ export default function FoliosPage() {
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-mono text-xs text-dark-400">#{f.numero_folio}</span>
                       <span className={`badge-${f.prioridad.toLowerCase()}`}>{f.prioridad}</span>
-                      <span className={`badge-${estatusReal.toLowerCase()}`}>{estatusReal}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        c === "VENCIDO_HISTORICO" ? "bg-purple-500/20 text-purple-400" :
+                        c === "VENCIDO_ACTIVO" ? "bg-red-500/20 text-red-400" :
+                        c === "CERRADO" ? "bg-dark-600 text-dark-400" :
+                        "bg-green-500/20 text-green-400"
+                      }`}>{estatusLabel}</span>
+                      {(f as any).lote_importacion && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-dark-700 text-dark-400">
+                          {(f as any).lote_importacion.replace("folios_", "").replace(/_/g, " ")}
+                        </span>
+                      )}
                     </div>
                     <div className="font-semibold text-white text-sm truncate">{f.tienda_nombre}</div>
                     <div
@@ -276,7 +328,7 @@ export default function FoliosPage() {
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    {estatusReal !== "Cerrado" && (
+                    {c !== "CERRADO" && (
                       <Countdown
                         fechaVencimiento={f.fecha_vencimiento}
                         estatus={f.estatus}
@@ -286,7 +338,7 @@ export default function FoliosPage() {
                     )}
                     {f.fecha_importacion && (
                       <div className="text-xs text-dark-500 mt-1">
-                        Llego: {format(new Date(f.fecha_importacion), "dd/MM HH:mm")}
+                        Llegó: {format(new Date(f.fecha_importacion), "dd/MM HH:mm")}
                       </div>
                     )}
                     {f.fecha_cierre && (
@@ -325,9 +377,7 @@ export default function FoliosPage() {
               placeholder="Pega el correo de OXXO aqui..."
             />
             <div className="flex gap-3 mt-4">
-              <button onClick={() => setShowImport(false)} className="btn-ghost flex-1">
-                Cancelar
-              </button>
+              <button onClick={() => setShowImport(false)} className="btn-ghost flex-1">Cancelar</button>
               <button
                 onClick={handleImport}
                 disabled={importLoading || !emailText.trim()}
@@ -345,12 +395,10 @@ export default function FoliosPage() {
           <div className="bg-dark-800 border border-dark-600 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-slide-up">
             <div className="sticky top-0 bg-dark-800 border-b border-dark-700 px-6 py-4 flex items-center justify-between">
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-sm text-dark-400">#{showDetail.numero_folio}</span>
                   <span className={`badge-${showDetail.prioridad.toLowerCase()}`}>{showDetail.prioridad}</span>
-                  <span className={`badge-${getEstatusReal(showDetail).toLowerCase()}`}>
-                    {getEstatusReal(showDetail)}
-                  </span>
+                  <span className="text-xs text-dark-400">{getEstatusReal(showDetail)}</span>
                 </div>
                 <h3 className="text-lg font-bold text-white mt-0.5">{showDetail.tienda_nombre}</h3>
               </div>
@@ -362,15 +410,13 @@ export default function FoliosPage() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   ["Ciudad", showDetail.ciudad],
-                  ["Categoria", showDetail.categoria],
+                  ["Categoría", showDetail.categoria],
                   ["Motivo", showDetail.motivo],
-                  ["Representante", showDetail.representante_propietario],
-                  ["Prestador", showDetail.prestador_servicio],
-                  ["Tecnico", showDetail.tecnico_asignado],
                   ["Llegada", showDetail.fecha_importacion ? format(new Date(showDetail.fecha_importacion), "dd/MM/yyyy HH:mm") : null],
                   ["Vencimiento", format(new Date(showDetail.fecha_vencimiento), "dd/MM/yyyy HH:mm")],
+                  ["Lote", (showDetail as any).lote_importacion],
                   ["Cerrado", showDetail.fecha_cierre ? format(new Date(showDetail.fecha_cierre), "dd/MM/yyyy HH:mm") : null],
-                  ["A tiempo", showDetail.cerrado_a_tiempo === true ? "✅ Si" : showDetail.cerrado_a_tiempo === false ? `⚠ No (+${showDetail.tiempo_vencido_mins}m)` : null],
+                  ["A tiempo", showDetail.cerrado_a_tiempo === true ? "✅ Sí" : showDetail.cerrado_a_tiempo === false ? "⚠ No" : null],
                 ]
                   .filter(([, v]) => v)
                   .map(([k, v]) => (
@@ -380,9 +426,9 @@ export default function FoliosPage() {
                     </div>
                   ))}
               </div>
-              {showDetail.estatus !== "Cerrado" && (
+              {getClasificacion(showDetail) !== "CERRADO" && (
                 <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-2">Tiempo Restante</div>
+                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-2">Tiempo</div>
                   <Countdown
                     fechaVencimiento={showDetail.fecha_vencimiento}
                     estatus={showDetail.estatus}
@@ -391,24 +437,10 @@ export default function FoliosPage() {
                   />
                 </div>
               )}
-              {showDetail.falla_especifica && (
+              {showDetail.falla && (
                 <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Falla Especifica</div>
-                  <div className="text-sm text-dark-100">{showDetail.falla_especifica}</div>
-                </div>
-              )}
-              {showDetail.correo_origen && (
-                <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Correo Original</div>
-                  <pre className="text-xs text-dark-300 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">
-                    {showDetail.correo_origen}
-                  </pre>
-                </div>
-              )}
-              {showDetail.comentarios_cierre && (
-                <div className="bg-dark-900 rounded-lg p-3">
-                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Comentarios Cierre</div>
-                  <div className="text-sm text-dark-200">{showDetail.comentarios_cierre}</div>
+                  <div className="text-xs text-dark-500 uppercase tracking-wide mb-1">Falla</div>
+                  <div className="text-sm text-dark-100">{showDetail.falla}</div>
                 </div>
               )}
               <div className="flex flex-col gap-2 mt-2">
